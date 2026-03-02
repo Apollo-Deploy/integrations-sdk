@@ -1,0 +1,152 @@
+/**
+ * @apollo-deploy/integrations
+ *
+ * Core adapter-based integration hub — public API surface.
+ *
+ * Adapter packages depend on this. API modules consume this.
+ * No provider-specific code lives here.
+ */
+
+// ── Hub ───────────────────────────────────────────────────────────────────────
+export { IntegrationHub } from './hub.js';
+export type {
+  HubConfig,
+  WebhookRequest,
+  WebhookResponse,
+  WebhookHandlerOptions,
+  WebhookRouter,
+  EventHandler,
+  EventContext,
+} from './hub.js';
+
+// ── Factory Helper ────────────────────────────────────────────────────────────
+export { defineAdapter } from './define-adapter.js';
+export type { AdapterDefinition } from './define-adapter.js';
+
+// ── Errors ────────────────────────────────────────────────────────────────────
+export {
+  AdapterError,
+  OAuthError,
+  WebhookError,
+  CapabilityError,
+  TokenRefreshError,
+  UnknownAdapterError,
+} from './errors.js';
+
+// ── Adapter Interface & Types ─────────────────────────────────────────────────
+export type {
+  IntegrationAdapter,
+  AdapterCapability,
+  AdapterContext,
+  TokenMetadata,
+  Logger,
+} from './types/adapter.js';
+
+// ── OAuth Types ───────────────────────────────────────────────────────────────
+export type {
+  OAuthHandler,
+  AuthorizationParams,
+  CodeExchangeParams,
+  TokenSet,
+  ProviderIdentity,
+  PostAuthResult,
+} from './types/oauth.js';
+
+// ── Webhook Types ─────────────────────────────────────────────────────────────
+export type {
+  WebhookHandler,
+  VerifyParams,
+  ParseParams,
+  SynchronousResponse,
+} from './types/webhook.js';
+
+// ── Domain Models ─────────────────────────────────────────────────────────────
+export type {
+  IntegrationEvent,
+  Connection,
+  ConnectionStatus,
+  Repository,
+  Branch,
+  PullRequest,
+  Commit,
+  CommitStatusInput,
+  CommitListOpts,
+  Channel,
+  MessagePayload,
+  MessageResult,
+  MessageBlock,
+  Issue,
+  CreateIssueInput,
+  UpdateIssueInput,
+  IssueComment,
+  IssueFilters,
+  ProjectRef,
+  ActorInfo,
+  Paginated,
+  PaginationOpts,
+  // App Store models
+  StoreApp,
+  StoreBuild,
+  StoreBuildStatus,
+  StoreArtifact,
+  StoreArtifactType,
+  StoreRelease,
+  StoreReleaseStatus,
+  LocalizedText,
+  StoreVersion,
+  StoreTrack,
+  TrackType,
+  TrackRelease,
+  TrackUpdateRequest,
+  TrackReleaseInput,
+  StoreReview,
+  StoreReviewReply,
+  StoreRating,
+  RatingSummary,
+  BetaGroup,
+  BetaTester,
+  BetaTesterInput,
+  CreateBetaGroupInput,
+  VitalsSummary,
+  VitalIndicator,
+  VitalMetricType,
+  VitalMetric,
+  VitalDataPoint,
+  CrashCluster,
+  AnrCluster,
+  BuildListOpts,
+  ReleaseListOpts,
+  ReviewListOpts,
+  RatingSummaryOpts,
+  RatingListOpts,
+  VitalsQueryOpts,
+  CrashQueryOpts,
+  SubmitForReviewRequest,
+  ReleaseToTrackRequest,
+  RolloutUpdateRequest,
+  PublishResult,
+} from './types/models.js';
+
+// ── Capability Interfaces ────────────────────────────────────────────────────────
+export type { SourceControlCapability } from './types/capabilities/source-control.js';
+export type { MessagingCapability } from './types/capabilities/messaging.js';
+export type { IssueTrackingCapability } from './types/capabilities/issue-tracking.js';
+export type { AppStoreCapability } from './types/capabilities/app-store.js';
+
+// ── Crypto ────────────────────────────────────────────────────────────────────
+export {
+  DecryptError,
+  CryptoConfigError,
+  encryptGCM,
+  decryptGCM,
+  zeroize,
+  deriveDataKey,
+  createCryptoProvider,
+  getRootKeyFromEnv,
+  createCryptoProviderFromEnv,
+} from './crypto.js';
+export type {
+  EncryptedEnvelope,
+  CryptoProvider,
+  EncryptionContext,
+} from './crypto.js';

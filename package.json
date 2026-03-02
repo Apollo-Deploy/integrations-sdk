@@ -1,0 +1,25 @@
+{
+  "name": "@apollo-deploy/integrations-sdk",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean && rm -rf node_modules",
+    "version": "changeset version",
+    "release": "turbo build && changeset publish",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.4",
+    "@types/bun": "latest",
+    "turbo": "^2.8.12",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "bun@1.3.6"
+}
