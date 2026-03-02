@@ -1,0 +1,179 @@
+---
+title: OAuth Flow
+description: Implement a complete OAuth connection flow — authorization, code exchange, token encryption, and refresh.
+type: guide
+prerequisites:
+  - /docs/getting-started
+---
+
+Every adapter implements `OAuthHandler` with a consistent interface. This guide walks through a complete connection flow.
+
+## The four OAuth steps
+
+```
+1. getAuthorizationUrl()  → redirect user to provider
+2. exchangeCode()         → trade code for tokens
+3. crypto.encrypt()       → encrypt tokens before storing
+4. oauth.getIdentity()    → fetch user's provider identity
+```
+
+## Step 1 — Generate the authorization URL
+
+Create a route that redirects the user to the provider's consent screen:
+
+```typescript title="app/api/connect/[provider]/route.ts" lineNumbers
+import { NextRequest, NextResponse } from 'next/server';
+import { hub } from '@/lib/integrations';
+import { generateState, signState } from '@/lib/oauth-state';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ provider: string }> },
+) {
+  const { provider } = await params;
+  const adapter = hub.getAdapter(provider);
+
+  const state = await signState({ provider, userId: getCurrentUserId(request) });
+  const redirectUri = `${process.env.APP_URL}/api/connect/${provider}/callback`;
+
+  const url = adapter.oauth.getAuthorizationUrl({
+    state,
+    scopes: getRequiredScopes(provider),
+    redirectUri,
+  });
+
+  return NextResponse.redirect(url);
+}
+```
+
+## Step 2 — Handle the callback
+
+After the user authorizes your app, the provider redirects back with a `code`:
+
+```typescript title="app/api/connect/[provider]/callback/route.ts" lineNumbers
+import { NextRequest, NextResponse } from 'next/server';
+import { hub } from '@/lib/integrations';
+import { verifyState } from '@/lib/oauth-state';
+import { db } from '@/lib/db';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ provider: string }> },
+) {
+  const { provider } = await params;
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get('code')!;
+  const state = searchParams.get('state')!;
+
+  // 1. Verify state to prevent CSRF
+  const { userId } = await verifyState(state);
+
+  // 2. Exchange code for tokens
+  const adapter = hub.getAdapter(provider);
+  const redirectUri = `${process.env.APP_URL}/api/connect/${provider}/callback`;
+  const tokens = await adapter.oauth.exchangeCode({ code, redirectUri });
+
+  // 3. Encrypt tokens before storing
+  const crypto = hub.config.crypto; // access via hub if needed, or import directly
+  const encryptionCtx = { orgId: getOrgId(), entityId: userId, purpose: 'oauth-token' };
+  const encryptedAccess = await crypto.encrypt(tokens.accessToken, encryptionCtx);
+  const encryptedRefresh = tokens.refreshToken
+    ? await crypto.encrypt(tokens.refreshToken, encryptionCtx)
+    : null;
+
+  // 4. Fetch provider identity (name, avatar, account ID)
+  const identity = await adapter.oauth.getIdentity(tokens.accessToken);
+
+  // 5. Optional: provider-specific post-auth setup (discovers cloudId for Jira, etc.)
+  const postAuth = adapter.oauth.afterAuthorize
+    ? await adapter.oauth.afterAuthorize(tokens)
+    : null;
+
+  // 6. Persist connection
+  await db.connections.upsert({
+    userId,
+    provider,
+    providerAccountId: identity.providerAccountId,
+    displayName: identity.displayName,
+    avatarUrl: identity.avatarUrl,
+    encryptedAccessToken: encryptedAccess,
+    encryptedRefreshToken: encryptedRefresh,
+    expiresAt: tokens.expiresAt,
+    scopes: tokens.scope.split(' '),
+    providerData: { ...tokens.providerData, ...postAuth?.metadata },
+  });
+
+  return NextResponse.redirect(`${process.env.APP_URL}/settings/integrations`);
+}
+```
+
+## Step 3 — Using tokens in capability calls
+
+Decrypt stored tokens before passing them to capability methods:
+
+```typescript title="lib/get-connection-tokens.ts" lineNumbers
+import { db } from '@/lib/db';
+import { createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
+import type { TokenSet } from '@apollo-deploy/integrations';
+
+const crypto = createCryptoProviderFromEnv();
+
+export async function getTokens(userId: string, provider: string): Promise<TokenSet> {
+  const connection = await db.connections.findOne({ userId, provider });
+  if (!connection) throw new Error('No connection found');
+
+  const ctx = { orgId: getOrgId(), entityId: userId, purpose: 'oauth-token' };
+
+  return {
+    accessToken: await crypto.decrypt(connection.encryptedAccessToken, ctx),
+    refreshToken: connection.encryptedRefreshToken
+      ? await crypto.decrypt(connection.encryptedRefreshToken, ctx)
+      : undefined,
+    expiresAt: connection.expiresAt,
+    scope: connection.scopes.join(' '),
+    providerData: connection.providerData,
+  };
+}
+```
+
+## Step 4 — Token refresh
+
+Schedule refresh before expiry. When a refresh fires:
+
+```typescript title="lib/refresh-token.ts" lineNumbers
+import { TokenRefreshError } from '@apollo-deploy/integrations';
+import { hub } from '@/lib/integrations';
+import { db } from '@/lib/db';
+
+export async function refreshConnection(connectionId: string) {
+  const connection = await db.connections.findById(connectionId);
+  const adapter = hub.getAdapter(connection.provider);
+  const crypto = createCryptoProviderFromEnv();
+  const encCtx = { orgId: connection.orgId, entityId: connection.userId, purpose: 'oauth-token' };
+
+  const currentRefreshToken = await crypto.decrypt(connection.encryptedRefreshToken, encCtx);
+
+  try {
+    const refreshed = await adapter.oauth.refreshToken(currentRefreshToken);
+
+    // For providers with rotating refresh tokens (Jira), atomically replace both tokens
+    await db.connections.update(connectionId, {
+      encryptedAccessToken: await crypto.encrypt(refreshed.accessToken, encCtx),
+      encryptedRefreshToken: refreshed.refreshToken
+        ? await crypto.encrypt(refreshed.refreshToken, encCtx)
+        : connection.encryptedRefreshToken,
+      expiresAt: refreshed.expiresAt,
+    });
+  } catch (err) {
+    if (err instanceof TokenRefreshError && !err.retryable) {
+      // Refresh token is revoked — user must re-connect
+      await db.connections.update(connectionId, { status: 'needs_reauth' });
+    }
+    throw err;
+  }
+}
+```
+
+<Callout type="warn">
+For Jira (`rotatesRefreshToken: true`, `requiresRefreshLock: true`), wrap the refresh + database update in a distributed lock to prevent two concurrent refreshes from invalidating each other.
+</Callout>

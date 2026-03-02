@@ -1,0 +1,155 @@
+---
+title: App Store
+description: Manage apps, builds, TestFlight, releases, reviews, ratings, beta groups, and vitals across Apple App Store Connect and Google Play Console.
+---
+
+The `app-store` capability provides a unified interface for mobile app distribution platforms. Adapters that declare it expose an `appStore` property.
+
+**Adapters:** [Apple App Store Connect](/docs/adapters/apple), [Google Play Console](/docs/adapters/google-play)
+
+## Accessing the capability
+
+```typescript title="lib/app-store.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const apple = hub.getAdapter('apple');
+const store = apple.appStore!;
+```
+
+## App management
+
+### `listApps` / `getApp`
+
+```typescript lineNumbers
+const apps = await store.listApps(tokens);
+const app = await store.getApp(tokens, 'com.example.myapp');
+// app.id, app.bundleId, app.name, app.platform
+```
+
+## Builds
+
+### `listBuilds` / `getBuild`
+
+```typescript lineNumbers
+const builds = await store.listBuilds(tokens, appId, {
+  version: '2.1.0',
+  limit: 20,
+});
+const build = await store.getBuild(tokens, appId, buildId);
+// build.id, build.version, build.buildNumber, build.status, build.uploadedAt
+```
+
+### `listBuildArtifacts` / `getArtifactDownloadUrl`
+
+Download dSYMs (Apple) or ProGuard mapping files (Google):
+
+```typescript lineNumbers
+const artifacts = await store.listBuildArtifacts(tokens, appId, buildId);
+// artifacts: StoreArtifact[]  — artifact.id, artifact.type, artifact.filename
+
+const { url, expiresAt } = await store.getArtifactDownloadUrl(tokens, appId, buildId, artifactId);
+```
+
+## Releases
+
+### `listReleases` / `getRelease`
+
+```typescript lineNumbers
+const releases = await store.listReleases(tokens, appId, { status: 'READY_FOR_SALE' });
+const release = await store.getRelease(tokens, appId, releaseId);
+// release.id, release.version, release.status, release.releaseDate
+```
+
+## Tracks & versions (Google Play)
+
+```typescript lineNumbers
+const tracks = await store.listTracks(tokens, appId);
+// tracks: StoreTrack[]  — 'production', 'beta', 'alpha', 'internal'
+
+await store.updateTrack(tokens, appId, 'production', {
+  releases: [{ versionCodes: [1234], status: 'inProgress', userFraction: 0.1 }],
+});
+```
+
+## Publishing
+
+### `submitForReview`
+
+Submit a version to the App Store / Play Store for review:
+
+```typescript lineNumbers
+const result = await store.submitForReview(tokens, appId, {
+  versionId: '1.2.3',
+  releaseNotes: {
+    'en-US': "Bug fixes and performance improvements.",
+    'fr-FR': "Corrections de bugs et améliorations de performances.",
+  },
+});
+// result.status, result.submittedAt
+```
+
+### `releaseToTrack`
+
+Release an approved version to users (supports staged rollout):
+
+```typescript lineNumbers
+await store.releaseToTrack(tokens, appId, {
+  versionId: '1.2.3',
+  track: 'production',
+  rolloutPercentage: 10, // Start at 10%, increase incrementally
+});
+```
+
+### `updateRollout`
+
+Adjust rollout percentage of an active release:
+
+```typescript lineNumbers
+await store.updateRollout(tokens, appId, { rolloutPercentage: 50 });
+await store.updateRollout(tokens, appId, { rolloutPercentage: 100 }); // Full rollout
+```
+
+## Beta testing (TestFlight / Internal Track)
+
+```typescript lineNumbers
+const groups = await store.listBetaGroups(tokens, appId);
+
+await store.addBetaTesters(tokens, appId, groupId, [
+  { email: 'tester@example.com', firstName: 'Jane', lastName: 'Doe' },
+]);
+
+await store.removeBetaTesters(tokens, appId, groupId, ['tester@example.com']);
+```
+
+## Reviews & ratings
+
+```typescript lineNumbers
+const reviews = await store.listReviews(tokens, appId, {
+  territory: 'US',
+  rating: 1, // Only 1-star reviews
+  perPage: 50,
+});
+
+await store.replyToReview(tokens, appId, reviewId, {
+  body: "Thank you for your feedback! We've fixed this issue in our latest update.",
+});
+
+const summary = await store.getRatingSummary(tokens, appId, { territory: 'US' });
+// summary.average, summary.totalCount, summary.distribution: { 1: n, 2: n, ... }
+```
+
+## Vitals & crash reporting
+
+```typescript lineNumbers
+const vitals = await store.getVitalsSummary(tokens, appId, {
+  startDate: '2024-01-01',
+  endDate: '2024-01-31',
+  version: '2.1.0',
+});
+// vitals.crashRate, vitals.anrRate, vitals.sessionStabilityRate
+
+const crashes = await store.listCrashClusters(tokens, appId, {
+  version: '2.1.0',
+  limit: 10,
+});
+```

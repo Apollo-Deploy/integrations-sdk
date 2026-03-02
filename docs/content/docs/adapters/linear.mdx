@@ -1,0 +1,79 @@
+---
+title: Linear
+description: Linear OAuth adapter — issue tracking with 24-hour access tokens (no refresh support).
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-linear
+```
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createLinearAdapter } from '@apollo-deploy/adapter-linear';
+
+const linear = createLinearAdapter({
+  clientId: process.env.LINEAR_CLIENT_ID!,
+  clientSecret: process.env.LINEAR_CLIENT_SECRET!,
+  webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `clientId` | `string` | Linear OAuth Client ID |
+| `clientSecret` | `string` | Linear OAuth Client Secret |
+| `webhookSecret` | `string` | Shared secret for `linear-signature` verification |
+
+## Environment variables
+
+```bash title=".env"
+LINEAR_CLIENT_ID=abc123
+LINEAR_CLIENT_SECRET=secret
+LINEAR_WEBHOOK_SECRET=whsec_your_secret
+```
+
+## OAuth
+
+```typescript title="lib/linear-oauth.ts" lineNumbers
+const url = adapter.oauth.getAuthorizationUrl({
+  state,
+  scopes: ['read', 'write', 'issues:create'],
+  redirectUri,
+});
+
+const tokens = await adapter.oauth.exchangeCode({ code, redirectUri });
+// tokens.providerData.organizationId
+// tokens.providerData.organizationName
+```
+
+<Callout type="info">
+Linear access tokens are valid for **24 hours**. Linear does not provide a refresh token — when a token expires, the user must re-authorize. `refreshable` is `false`.
+</Callout>
+
+## Webhook events
+
+Linear sends `linear-signature` (HMAC-SHA256) and `linear-delivery` headers.
+
+| Linear event | Normalized `eventType` |
+|---|---|
+| Issue created | `issue.created` |
+| Issue updated | `issue.updated` |
+| Issue removed | `issue.deleted` |
+| Comment created | `comment.created` |
+| Cycle updated | `cycle.updated` |
+
+## Token metadata
+
+| Field | Value |
+|-------|-------|
+| `expiresInSeconds` | `86400` (24 hours) |
+| `refreshable` | `false` |
+| `rotatesRefreshToken` | `false` |
+| `requiresRefreshLock` | `false` |
+
+## Capabilities
+
+- [`issue-tracking`](/docs/capabilities/issue-tracking) — list/get/create/update issues, add comments, list teams

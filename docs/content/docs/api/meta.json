@@ -1,0 +1,12 @@
+{
+  "title": "API Reference",
+  "pages": [
+    "index",
+    "integration-hub",
+    "define-adapter",
+    "oauth",
+    "webhook",
+    "crypto",
+    "errors"
+  ]
+}

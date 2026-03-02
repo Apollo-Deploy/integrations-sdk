@@ -1,0 +1,69 @@
+---
+title: defineAdapter
+description: API reference for the defineAdapter() factory and AdapterDefinition interface.
+---
+
+```typescript
+import { defineAdapter } from '@apollo-deploy/integrations';
+```
+
+## `defineAdapter<TConfig>(definition)`
+
+Creates a type-safe adapter factory function from a definition object.
+
+```typescript
+function defineAdapter<TConfig>(
+  definition: AdapterDefinition<TConfig>
+): (config: TConfig) => IntegrationAdapter<TConfig>
+```
+
+The returned function (`createXxxAdapter`) takes your provider-specific config object and produces a fully-constructed `IntegrationAdapter`. Capabilities are only wired if they are both declared in `capabilities` **and** have a corresponding factory function.
+
+```typescript title="src/adapter.ts" lineNumbers
+export const createMyAdapter = defineAdapter<MyConfig>({
+  id: 'my-provider',
+  name: 'My Provider',
+  capabilities: ['messaging'] as const,
+  tokenMetadata: { expiresInSeconds: 3600, refreshable: true, rotatesRefreshToken: false, requiresRefreshLock: false },
+  createOAuthHandler: (config) => createMyOAuth(config),
+  createWebhookHandler: (config) => createMyWebhook(config),
+  createMessaging: (config) => createMyMessaging(config),
+});
+
+// Usage:
+const adapter = createMyAdapter({ botToken: '...', signingSecret: '...' });
+```
+
+## `AdapterDefinition<TConfig>`
+
+<TypeTable
+  type={{
+    id: { description: "Unique adapter identifier. Use lowercase kebab-case: 'github', 'google-play'.", type: 'string' },
+    name: { description: "Human-readable display name: 'GitHub', 'Google Play Console'.", type: 'string' },
+    metadata: { description: 'Descriptive metadata for display and discovery. See AdapterMetadata.', type: 'AdapterMetadata | undefined' },
+    capabilities: { description: "Declared capabilities. Must exactly match which createXxx factories you provide.", type: 'readonly AdapterCapability[]' },
+    tokenMetadata: { description: 'Token lifecycle hints for the refresh scheduler.', type: 'TokenMetadata' },
+    createOAuthHandler: { description: 'Required. Factory that returns an OAuthHandler.', type: '(config: TConfig) => OAuthHandler' },
+    createWebhookHandler: { description: 'Required. Factory that returns a WebhookHandler.', type: '(config: TConfig) => WebhookHandler' },
+    createSourceControl: { description: "Conditionally required when 'source-control' is in capabilities.", type: '((config: TConfig) => SourceControlCapability) | undefined' },
+    createMessaging: { description: "Conditionally required when 'messaging' is in capabilities.", type: '((config: TConfig) => MessagingCapability) | undefined' },
+    createIssueTracking: { description: "Conditionally required when 'issue-tracking' is in capabilities.", type: '((config: TConfig) => IssueTrackingCapability) | undefined' },
+    createAppStore: { description: "Conditionally required when 'app-store' is in capabilities.", type: '((config: TConfig) => AppStoreCapability) | undefined' },
+    onRegister: { description: 'Optional lifecycle hook — called when adapter is registered with hub.', type: '((config: TConfig, ctx: AdapterContext) => void | Promise<void>) | undefined' },
+    onReady: { description: 'Optional lifecycle hook — called after all adapters are registered.', type: '((config: TConfig, ctx: AdapterContext) => void | Promise<void>) | undefined' },
+    onShutdown: { description: 'Optional lifecycle hook — called during graceful shutdown.', type: '((config: TConfig) => void | Promise<void>) | undefined' },
+  }}
+/>
+
+## Capability wiring
+
+The factory automatically wires capabilities based on `capabilities` declarations:
+
+```typescript
+// Only wired if 'source-control' is in capabilities AND createSourceControl is provided
+adapter.sourceControl = capabilities.includes('source-control')
+  ? createSourceControl(config)
+  : undefined;
+```
+
+This means `adapter.sourceControl` is `undefined` if you forgot to add `'source-control'` to `capabilities`, even if you provided `createSourceControl`. TypeScript will warn about any mismatch.

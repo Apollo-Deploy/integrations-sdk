@@ -1,0 +1,78 @@
+---
+title: Introduction
+description: A unified TypeScript SDK for building third-party integrations across GitHub, GitLab, Slack, Discord, Jira, Linear, Apple App Store Connect, and Google Play Console.
+type: overview
+---
+
+The Integrations SDK is a TypeScript library that abstracts third-party platform APIs behind a single, consistent interface. Write your integration logic once — webhook handling, OAuth flows, token management, and capability calls all work the same way regardless of the target provider.
+
+## Why the Integrations SDK?
+
+Integrating with multiple platforms typically means different auth patterns, different webhook shapes, different API clients, and different error models across every provider. The Integrations SDK solves each of these once:
+
+- **Single codebase** — one `IntegrationHub`, one event model, one capability interface per domain
+- **Type-safe** — full TypeScript generics: `hub.webhooks.github` only compiles if `github` is registered
+- **Event-driven** — normalized `IntegrationEvent` shape across all providers; subscribe with `hub.onEvent('push', handler)`
+- **Stateless adapters** — tokens are passed as parameters; adapters hold config, not runtime state
+- **Built-in crypto** — AES-256-GCM token encryption with HKDF-derived keys, ready for multi-tenant use
+- **Capability discovery** — `hub.getAdaptersByCapability('source-control')` returns every adapter that supports it
+
+## How it works
+
+The SDK has four core concepts:
+
+1. **`IntegrationHub`** — the main entry point that coordinates adapters, routes webhooks, and dispatches normalized events
+2. **Adapters** — provider-specific implementations created with `defineAdapter()`, covering OAuth, webhook ingestion, and capability methods
+3. **Capabilities** — typed interfaces (`SourceControlCapability`, `MessagingCapability`, `IssueTrackingCapability`, `AppStoreCapability`) that adapters implement
+4. **Crypto** — a pluggable `CryptoProvider` for encrypting and decrypting OAuth tokens at rest
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
+import { createGithubAdapter } from '@apollo-deploy/adapter-github';
+import { createSlackAdapter } from '@apollo-deploy/adapter-slack';
+
+export const hub = new IntegrationHub({
+  adapters: {
+    github: createGithubAdapter({
+      appId: process.env.GITHUB_APP_ID!,
+      privateKey: process.env.GITHUB_PRIVATE_KEY!,
+      webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+    }),
+    slack: createSlackAdapter({
+      botToken: process.env.SLACK_BOT_TOKEN!,
+      signingSecret: process.env.SLACK_SIGNING_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
+
+await hub.initialize();
+```
+
+## Supported integrations
+
+| Provider | Package | Source Control | Messaging | Issue Tracking | App Store |
+|----------|---------|:-:|:-:|:-:|:-:|
+| GitHub | `@apollo-deploy/adapter-github` | ✓ | | | |
+| GitLab | `@apollo-deploy/adapter-gitlab` | ✓ | | ✓ | |
+| Slack | `@apollo-deploy/adapter-slack` | | ✓ | | |
+| Discord | `@apollo-deploy/adapter-discord` | | ✓ | | |
+| Jira | `@apollo-deploy/adapter-jira` | | | ✓ | |
+| Linear | `@apollo-deploy/adapter-linear` | | | ✓ | |
+| Apple App Store Connect | `@apollo-deploy/adapter-apple` | | | | ✓ |
+| Google Play Console | `@apollo-deploy/adapter-google-play` | | | | ✓ |
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@apollo-deploy/integrations` | Core hub, `defineAdapter()`, all types, capabilities, domain models, and crypto |
+| `@apollo-deploy/adapter-github` | GitHub Apps — source control |
+| `@apollo-deploy/adapter-gitlab` | GitLab OAuth — source control + issue tracking |
+| `@apollo-deploy/adapter-slack` | Slack Bot — messaging |
+| `@apollo-deploy/adapter-discord` | Discord Bot — messaging |
+| `@apollo-deploy/adapter-jira` | Jira Cloud OAuth — issue tracking |
+| `@apollo-deploy/adapter-linear` | Linear OAuth — issue tracking |
+| `@apollo-deploy/adapter-apple` | App Store Connect JWT — app store |
+| `@apollo-deploy/adapter-google-play` | Google Play Developer API — app store |

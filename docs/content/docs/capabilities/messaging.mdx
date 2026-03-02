@@ -1,0 +1,105 @@
+---
+title: Messaging
+description: List channels, send plain and rich messages, update and delete messages.
+---
+
+The `messaging` capability provides a uniform API for posting messages to chat platforms. Adapters that declare it expose a `messaging` property.
+
+**Adapters:** [Slack](/docs/adapters/slack), [Discord](/docs/adapters/discord)
+
+## Accessing the capability
+
+```typescript title="lib/notify.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const slack = hub.getAdapter('slack');
+const msg = slack.messaging!;
+
+// Or broadcast to every messaging-capable adapter
+const all = hub.getAdaptersByCapability('messaging');
+await Promise.all(all.map((a) => a.messaging!.sendMessage(tokens, channelId, payload)));
+```
+
+## Methods
+
+### `listChannels`
+
+Fetch channels the bot has access to.
+
+```typescript lineNumbers
+const channels = await msg.listChannels(tokens, { page: 1, perPage: 100 });
+// channels.items: Channel[]  — channel.id, channel.name, channel.isPrivate
+```
+
+### `sendMessage`
+
+Send a plain text or simple message.
+
+```typescript lineNumbers
+const result = await msg.sendMessage(tokens, 'C1234567890', {
+  text: 'Deployment to production succeeded ✓',
+});
+// result.messageId — use for future updates or reactions
+```
+
+<TypeTable
+  type={{
+    text: { description: 'Plain text content of the message.', type: 'string' },
+    threadId: { description: 'Reply inside a thread instead of posting top-level.', type: 'string | undefined' },
+  }}
+/>
+
+### `updateMessage`
+
+Edit a previously sent message.
+
+```typescript lineNumbers
+await msg.updateMessage(tokens, 'C1234567890', result.messageId, {
+  text: 'Deployment to production failed ✗',
+});
+```
+
+### `sendRichMessage`
+
+Send a message with rich formatting using the platform's native block/embed format.
+
+```typescript lineNumbers
+// Slack Block Kit example
+await msg.sendRichMessage(tokens, 'C1234567890', [
+  {
+    type: 'section',
+    text: { type: 'mrkdwn', text: '*Deployment complete*\n`main` → production' },
+  },
+  {
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: `Deployed by <@${userId}> — <${deployUrl}|View deploy>` }],
+  },
+]);
+```
+
+<Callout type="info">
+`sendRichMessage` accepts platform-native block structures (`MessageBlock[]`). For portable message formatting, use `sendMessage` with markdown — the adapter converts it to the platform's format.
+</Callout>
+
+## Types
+
+```typescript
+interface Channel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  memberCount?: number;
+}
+
+interface MessagePayload {
+  text: string;
+  threadId?: string;
+}
+
+interface MessageResult {
+  messageId: string;
+  channelId: string;
+  threadId?: string;
+  timestamp: Date;
+}
+```

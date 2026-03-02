@@ -1,0 +1,139 @@
+---
+title: Errors
+description: API reference for all error classes exported from @apollo-deploy/integrations.
+---
+
+```typescript
+import {
+  AdapterError,
+  OAuthError,
+  WebhookError,
+  CapabilityError,
+  TokenRefreshError,
+  UnknownAdapterError,
+  DecryptError,
+  CryptoConfigError,
+} from '@apollo-deploy/integrations';
+```
+
+All errors extend `AdapterError`. Use `instanceof` to handle them:
+
+```typescript lineNumbers
+try {
+  await adapter.oauth.exchangeCode({ code, redirectUri });
+} catch (err) {
+  if (err instanceof OAuthError) { ... }
+  else if (err instanceof AdapterError) { ... }
+  else throw err;
+}
+```
+
+## `AdapterError`
+
+Base class for all SDK errors.
+
+<TypeTable
+  type={{
+    message: { description: 'Human-readable error message.', type: 'string' },
+    code: { description: "Machine-readable error code: 'OAUTH_ERROR', 'WEBHOOK_ERROR', etc.", type: 'string' },
+    adapterId: { description: 'The adapter that threw the error, if known.', type: 'string | undefined' },
+    cause: { description: 'Original underlying error.', type: 'unknown | undefined' },
+  }}
+/>
+
+## `OAuthError`
+
+Thrown during OAuth flows: authorization URL generation, code exchange, or token operations.
+
+| `code` value | Meaning |
+|---|---|
+| `OAUTH_ERROR` | Generic OAuth failure |
+| `OAUTH_CODE_EXCHANGE_FAILED` | Code exchange request failed |
+| `OAUTH_IDENTITY_FAILED` | `getIdentity()` call failed |
+
+## `TokenRefreshError`
+
+Thrown when a token refresh attempt fails.
+
+<TypeTable
+  type={{
+    retryable: { description: 'false = user must re-authorize (revoked token); true = transient failure, retry later.', type: 'boolean' },
+  }}
+/>
+
+```typescript lineNumbers
+import { TokenRefreshError } from '@apollo-deploy/integrations';
+
+catch (err) {
+  if (err instanceof TokenRefreshError && !err.retryable) {
+    await markConnectionAsNeedsReauth(connectionId);
+  }
+}
+```
+
+## `WebhookError`
+
+Thrown during webhook processing.
+
+<TypeTable
+  type={{
+    statusCode: { description: 'HTTP status code the hub should return (401 for bad signature, 400 for parse error).', type: 'number' },
+  }}
+/>
+
+## `CapabilityError`
+
+Thrown by capability methods (`sourceControl.*`, `messaging.*`, `issueTracking.*`, `appStore.*`).
+
+<TypeTable
+  type={{
+    retryable: { description: 'Whether the operation is safe to re-attempt.', type: 'boolean' },
+    capability: { description: "The capability that threw: 'source-control', 'messaging', etc.", type: 'string | undefined' },
+    method: { description: "The method that threw: 'listRepositories', 'createIssue', etc.", type: 'string | undefined' },
+  }}
+/>
+
+```typescript lineNumbers
+import { CapabilityError } from '@apollo-deploy/integrations';
+
+catch (err) {
+  if (err instanceof CapabilityError && err.retryable) {
+    await queue.retryLater(job);
+  }
+}
+```
+
+## `UnknownAdapterError`
+
+Thrown by `hub.getAdapter(key)` when no adapter is registered under the given key.
+
+```typescript lineNumbers
+import { UnknownAdapterError } from '@apollo-deploy/integrations';
+
+catch (err) {
+  if (err instanceof UnknownAdapterError) {
+    return Response.json({ error: 'Unknown provider' }, { status: 404 });
+  }
+}
+```
+
+## `DecryptError`
+
+Thrown by `crypto.decrypt()` when the authentication tag verification fails. Indicates tampered ciphertext or a mismatched key/context.
+
+## `CryptoConfigError`
+
+Thrown by `createCryptoProviderFromEnv()` when `KMS_ROOT_KEY_B64` is missing, not valid base64, or decoded to a key that is not exactly 32 bytes.
+
+```typescript lineNumbers
+import { CryptoConfigError, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
+
+try {
+  const crypto = createCryptoProviderFromEnv();
+} catch (err) {
+  if (err instanceof CryptoConfigError) {
+    console.error('Set KMS_ROOT_KEY_B64 to a base64-encoded 32-byte key');
+    process.exit(1);
+  }
+}
+```

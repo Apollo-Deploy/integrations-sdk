@@ -1,0 +1,112 @@
+---
+title: OAuth
+description: API reference for OAuthHandler, TokenSet, ProviderIdentity, and related types.
+---
+
+```typescript
+import type { OAuthHandler, TokenSet, ProviderIdentity, PostAuthResult } from '@apollo-deploy/integrations';
+```
+
+## `OAuthHandler`
+
+The contract every adapter's OAuth implementation must satisfy. Access via `adapter.oauth`.
+
+### `getAuthorizationUrl(params)`
+
+```typescript
+getAuthorizationUrl(params: AuthorizationParams): string
+```
+
+Builds the provider authorization URL. The hub manages state signing/validation — the adapter only constructs the URL.
+
+**`AuthorizationParams`**
+
+<TypeTable
+  type={{
+    state: { description: 'CSRF state token — sign with your own HMAC or use a session store.', type: 'string' },
+    scopes: { description: 'OAuth scopes to request.', type: 'string[]' },
+    redirectUri: { description: 'Callback URL registered in the provider dashboard.', type: 'string' },
+    extras: { description: "Provider-specific query params. Example: Slack's user_scope, Google's access_type.", type: 'Record<string, string> | undefined' },
+  }}
+/>
+
+### `exchangeCode(params)`
+
+```typescript
+exchangeCode(params: CodeExchangeParams): Promise<TokenSet>
+```
+
+Exchanges the authorization code for tokens.
+
+**`CodeExchangeParams`**
+
+<TypeTable
+  type={{
+    code: { description: 'Authorization code from the provider callback.', type: 'string' },
+    redirectUri: { description: 'Must exactly match the redirectUri used in getAuthorizationUrl.', type: 'string' },
+    codeVerifier: { description: 'PKCE code verifier, if used.', type: 'string | undefined' },
+  }}
+/>
+
+### `refreshToken(refreshToken)`
+
+```typescript
+refreshToken(refreshToken: string): Promise<TokenSet>
+```
+
+Refreshes an expired access token. Throws `OAuthError` if the provider does not support refresh.
+
+### `getIdentity(accessToken)`
+
+```typescript
+getIdentity(accessToken: string): Promise<ProviderIdentity>
+```
+
+Fetches the authenticated user's identity from the provider. Used to populate connection metadata.
+
+### `afterAuthorize(tokens)` (optional)
+
+```typescript
+afterAuthorize?(tokens: TokenSet): Promise<PostAuthResult>
+```
+
+Optional post-authorization hook. Used to discover provider-specific resources after the OAuth flow:
+- **GitHub**: discover installations and `installationId`
+- **Jira**: discover accessible cloud sites and `cloudId`
+
+Returns `null` if not applicable.
+
+## `TokenSet`
+
+Normalized token response from `exchangeCode` and `refreshToken`.
+
+<TypeTable
+  type={{
+    accessToken: { description: 'Bearer access token.', type: 'string' },
+    refreshToken: { description: 'Refresh token, if the provider issued one.', type: 'string | undefined' },
+    expiresAt: { description: 'Expiry date of the access token.', type: 'Date | undefined' },
+    scope: { description: 'Space-separated scope string as returned by the provider.', type: 'string' },
+    providerData: { description: 'Provider-specific extras to persist alongside tokens. GitHub: installationId. Jira: cloudId. Slack: teamId.', type: 'Record<string, unknown>' },
+  }}
+/>
+
+## `ProviderIdentity`
+
+<TypeTable
+  type={{
+    providerAccountId: { description: "Provider's stable user/account ID.", type: 'string' },
+    displayName: { description: 'Human-readable name or username.', type: 'string' },
+    email: { description: "User's email address, if available.", type: 'string | undefined' },
+    avatarUrl: { description: "URL to the user's profile avatar.", type: 'string | undefined' },
+    metadata: { description: 'Additional provider-specific identity data.', type: 'Record<string, unknown>' },
+  }}
+/>
+
+## `PostAuthResult`
+
+<TypeTable
+  type={{
+    metadata: { description: 'Additional metadata to merge into the connection record.', type: 'Record<string, unknown>' },
+    scopes: { description: 'Override scopes if the provider reports different scopes than requested.', type: 'string[] | undefined' },
+  }}
+/>

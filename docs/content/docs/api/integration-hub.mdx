@@ -1,0 +1,212 @@
+---
+title: IntegrationHub
+description: API reference for the IntegrationHub class and related types.
+---
+
+```typescript
+import { IntegrationHub } from '@apollo-deploy/integrations';
+```
+
+## Constructor
+
+```typescript
+new IntegrationHub<TAdapters>(config: HubConfig<TAdapters>)
+```
+
+Creates and configures the hub. Call [`hub.initialize()`](#initialize) after construction.
+
+### `HubConfig`
+
+<TypeTable
+  type={{
+    adapters: { description: 'Map of adapter key → adapter instance. Keys become type-safe route names on hub.webhooks.', type: 'TAdapters' },
+    crypto: { description: 'CryptoProvider for token encryption. Use createCryptoProviderFromEnv().', type: 'CryptoProvider' },
+    logger: { description: 'Logger compatible with pino/Fastify — must implement debug/info/warn/error/child.', type: 'Logger' },
+  }}
+/>
+
+```typescript title="lib/integrations.ts" lineNumbers
+const hub = new IntegrationHub({
+  adapters: {
+    github: createGithubAdapter({ ... }),
+    slack: createSlackAdapter({ ... }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
+```
+
+## Lifecycle
+
+### `initialize()`
+
+```typescript
+hub.initialize(): Promise<void>
+```
+
+Calls `onRegister` then `onReady` on every adapter in registration order. Throws if any lifecycle hook throws. Must be called before `hub.webhooks` or capability methods are used.
+
+### `shutdown()`
+
+```typescript
+hub.shutdown(): Promise<void>
+```
+
+Calls `onShutdown` on all adapters concurrently (using `Promise.allSettled`). Individual shutdown errors are logged but do not prevent other adapters from shutting down.
+
+## Webhook routing
+
+### `webhooks`
+
+```typescript
+hub.webhooks: WebhookRouter<TAdapters>
+```
+
+A type-safe Proxy where `hub.webhooks[key]` only compiles if `key` is a registered adapter key.
+
+```typescript
+hub.webhooks.github(request, options)  // ✓ — 'github' is registered
+hub.webhooks.notion(request, options)  // ✗ — compile error if 'notion' is not in TAdapters
+```
+
+Each call:
+1. Verifies the webhook signature
+2. Handles synchronous challenges (Slack `url_verification`)
+3. Returns `200` immediately
+4. Dispatches the normalized event via `waitUntil` (async)
+
+```typescript
+const response = await hub.webhooks.github(
+  { rawBody, headers, body },
+  { secret: process.env.GITHUB_WEBHOOK_SECRET!, waitUntil: ctx.waitUntil },
+);
+// response: { statusCode: 200, body?: unknown }
+```
+
+**`WebhookRequest`**
+
+<TypeTable
+  type={{
+    rawBody: { description: 'Raw request body as Buffer. Required for signature verification.', type: 'Buffer' },
+    headers: { description: 'Request headers as a flat string map.', type: 'Record<string, string>' },
+    body: { description: 'Parsed JSON body.', type: 'unknown' },
+  }}
+/>
+
+**`WebhookHandlerOptions`**
+
+<TypeTable
+  type={{
+    secret: { description: 'Webhook signing secret. Overrides any adapter-level default.', type: 'string' },
+    waitUntil: { description: 'Serverless async context — pass executionCtx.waitUntil for Cloudflare Workers / Next.js edge.', type: '((p: Promise<unknown>) => void) | undefined' },
+  }}
+/>
+
+## Adapter access
+
+### `getAdapter(key)`
+
+```typescript
+hub.getAdapter<K extends keyof TAdapters>(key: K): TAdapters[K]
+```
+
+Returns the adapter registered under `key`. Throws [`UnknownAdapterError`](/docs/api/errors#unknownadaptererror) if not found.
+
+### `getAdaptersByCapability(capability)`
+
+```typescript
+hub.getAdaptersByCapability(capability: AdapterCapability): IntegrationAdapter[]
+```
+
+Returns all adapters that declared the given capability. Useful for broadcasting to every provider of a type.
+
+### `getRegisteredAdapters()`
+
+```typescript
+hub.getRegisteredAdapters(): string[]
+```
+
+Returns an array of registered adapter keys.
+
+### `listAdapters()`
+
+```typescript
+hub.listAdapters(): AdapterInfo[]
+```
+
+Returns a snapshot of static information for every registered adapter. Useful for building integration listing UIs.
+
+**`AdapterInfo`**
+
+<TypeTable
+  type={{
+    key: { description: "The key this adapter was registered under (e.g. 'github').", type: 'string' },
+    id: { description: "The adapter's own identifier (mirrors IntegrationAdapter.id).", type: 'string' },
+    name: { description: 'Human-readable name.', type: 'string' },
+    capabilities: { description: 'Declared capability identifiers.', type: 'readonly AdapterCapability[]' },
+    metadata: { description: 'Descriptive metadata: icon, description, dateAdded, etc.', type: 'AdapterMetadata' },
+  }}
+/>
+
+## Event subscriptions
+
+### `onEvent(type, handler)`
+
+```typescript
+hub.onEvent(eventTypeOrTypes: string | string[], handler: EventHandler): void
+```
+
+Register a handler for one or more event types. Fires when any adapter emits a matching event.
+
+```typescript
+hub.onEvent('push', async (event, ctx) => { ... });
+hub.onEvent(['issue.created', 'issue.updated'], async (event, ctx) => { ... });
+```
+
+### `onAnyEvent(handler)`
+
+```typescript
+hub.onAnyEvent(handler: EventHandler): void
+```
+
+Wildcard handler — fires for every event from every adapter.
+
+**`EventContext`**
+
+<TypeTable
+  type={{
+    hub: { description: 'Reference to the IntegrationHub instance.', type: 'IntegrationHub' },
+    getAdapter: { description: 'Shorthand for hub.getAdapter().', type: '(key: string) => IntegrationAdapter' },
+    logger: { description: 'Hub logger instance.', type: 'Logger' },
+  }}
+/>
+
+## Related interfaces
+
+### `IntegrationAdapter`
+
+The contract every provider adapter must satisfy. See [types/adapter.ts](https://github.com/Apollo-Deploy/integrations-sdk/blob/main/packages/integrations/src/types/adapter.ts) for the full definition.
+
+### `AdapterMetadata`
+
+<TypeTable
+  type={{
+    iconUrl: { description: 'URL or data-URI for the provider logo. Recommended: SVG or 64×64 PNG.', type: 'string | undefined' },
+    description: { description: 'One-sentence summary of what the integration does.', type: 'string | undefined' },
+    dateAdded: { description: "ISO 8601 date when this adapter was added to the SDK. Example: '2024-01-15'", type: 'string | undefined' },
+    category: { description: "High-level category for grouping. Example: 'Source Control', 'Messaging', 'App Stores'", type: 'string | undefined' },
+    docsUrl: { description: "Link to the provider's developer docs or OAuth setup guide.", type: 'string | undefined' },
+    websiteUrl: { description: "Link to the provider's marketing / home page.", type: 'string | undefined' },
+  }}
+/>
+
+### `TokenMetadata`
+
+<TypeTable
+  type={{
+    expiresInSeconds: { description: 'null = token never expires.', type: 'number | null' },
+    refreshable: { description: 'Whether a refresh flow exists for this provider.', type: 'boolean' },
+    rotatesRefreshToken: { description: 'Refresh tokens rotate on each use — requires atomic DB swap.', type: 'boolean' },
+    requiresRefreshLock: { description: 'A distributed lock must be held during token refresh.', type: 'boolean' },
+  }}
+/>

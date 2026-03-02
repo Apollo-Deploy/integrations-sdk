@@ -1,0 +1,84 @@
+---
+title: GitLab
+description: GitLab OAuth adapter — source control and issue tracking with personal or group access tokens.
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-gitlab
+```
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createGitlabAdapter } from '@apollo-deploy/adapter-gitlab';
+
+const gitlab = createGitlabAdapter({
+  clientId: process.env.GITLAB_CLIENT_ID!,
+  clientSecret: process.env.GITLAB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITLAB_WEBHOOK_SECRET!,
+  // Optional: self-hosted GitLab
+  instanceUrl: process.env.GITLAB_INSTANCE_URL,
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `clientId` | `string` | OAuth Application ID |
+| `clientSecret` | `string` | OAuth Application Secret |
+| `webhookSecret` | `string` | Token for `X-Gitlab-Token` verification |
+| `instanceUrl` | `string?` | Self-managed GitLab URL (default: `https://gitlab.com`) |
+
+## Environment variables
+
+```bash title=".env"
+GITLAB_CLIENT_ID=abc123
+GITLAB_CLIENT_SECRET=secret
+GITLAB_WEBHOOK_SECRET=whsec_your_secret
+# Self-hosted only:
+GITLAB_INSTANCE_URL=https://gitlab.yourcompany.com
+```
+
+## OAuth
+
+GitLab uses standard OAuth 2.0 with long-lived refresh tokens. Tokens expire after **2 hours**.
+
+```typescript title="lib/gitlab-oauth.ts" lineNumbers
+const url = adapter.oauth.getAuthorizationUrl({
+  state,
+  scopes: ['read_api', 'read_repository', 'write_repository'],
+  redirectUri,
+});
+
+const tokens = await adapter.oauth.exchangeCode({ code, redirectUri });
+// tokens.providerData.instanceUrl — persisted for API calls
+
+const refreshed = await adapter.oauth.refreshToken(tokens.refreshToken!);
+```
+
+## Webhook events
+
+GitLab sends `X-Gitlab-Token` header for verification.
+
+| GitLab event | Normalized `eventType` |
+|---|---|
+| Push | `push` |
+| Merge Request (open/close/merge) | `pull_request.opened` / `pull_request.closed` / `pull_request.merged` |
+| Issue (create/update/close) | `issue.created` / `issue.updated` / `issue.closed` |
+| Pipeline | `pipeline.status_changed` |
+| Deployment | `deployment.status_changed` |
+
+## Token metadata
+
+| Field | Value |
+|-------|-------|
+| `expiresInSeconds` | `7200` (2 hours) |
+| `refreshable` | `true` |
+| `rotatesRefreshToken` | `false` |
+| `requiresRefreshLock` | `false` |
+
+## Capabilities
+
+- [`source-control`](/docs/capabilities/source-control) — repositories, branches, merge requests, commit statuses
+- [`issue-tracking`](/docs/capabilities/issue-tracking) — issues, comments, projects

@@ -1,0 +1,14 @@
+{
+  "title": "Adapters",
+  "pages": [
+    "index",
+    "github",
+    "gitlab",
+    "slack",
+    "discord",
+    "jira",
+    "linear",
+    "apple",
+    "google-play"
+  ]
+}

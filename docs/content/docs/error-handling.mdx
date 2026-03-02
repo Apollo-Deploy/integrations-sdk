@@ -1,0 +1,183 @@
+---
+title: Error Handling
+description: Typed error classes for every failure scenario in the Integrations SDK.
+type: guide
+prerequisites:
+  - /docs/getting-started
+---
+
+All errors are importable from `@apollo-deploy/integrations`:
+
+```typescript
+import {
+  AdapterError,
+  OAuthError,
+  WebhookError,
+  CapabilityError,
+  TokenRefreshError,
+  UnknownAdapterError,
+  DecryptError,
+  CryptoConfigError,
+} from '@apollo-deploy/integrations';
+```
+
+## Error types
+
+### `AdapterError`
+
+Base class for all SDK errors. Every error below extends `AdapterError`.
+
+<TypeTable
+  type={{
+    message: { description: 'Human-readable error message.', type: 'string' },
+    code: { description: 'Machine-readable error code string.', type: 'string' },
+    adapterId: { description: 'The adapter that threw the error.', type: 'string | undefined' },
+    cause: { description: 'Original underlying error, if any.', type: 'unknown | undefined' },
+  }}
+/>
+
+### `OAuthError`
+
+Thrown during OAuth flows — authorization URL generation, code exchange, or token refresh.
+
+```typescript title="lib/oauth.ts" lineNumbers
+import { OAuthError } from '@apollo-deploy/integrations';
+
+try {
+  const tokens = await adapter.oauth.exchangeCode({ code, redirectUri });
+} catch (error) {
+  if (error instanceof OAuthError) {
+    // Redirect user back to login
+    return redirect('/connect?error=oauth_failed');
+  }
+  throw error;
+}
+```
+
+### `TokenRefreshError`
+
+Thrown when a token refresh attempt fails. Check `retryable` — if `false`, the user must re-authenticate.
+
+<TypeTable
+  type={{
+    retryable: { description: 'false = user must re-authorize; true = transient failure, retry later.', type: 'boolean' },
+  }}
+/>
+
+```typescript title="lib/token-refresh.ts" lineNumbers
+import { TokenRefreshError } from '@apollo-deploy/integrations';
+
+try {
+  const refreshed = await adapter.oauth.refreshToken(storedRefreshToken);
+} catch (error) {
+  if (error instanceof TokenRefreshError && !error.retryable) {
+    // Mark connection as needing re-auth
+    await db.connections.update({ id: connectionId }, { status: 'needs_reauth' });
+  }
+}
+```
+
+### `WebhookError`
+
+Thrown during webhook processing — signature verification failure, parse errors, etc.
+
+<TypeTable
+  type={{
+    statusCode: { description: 'HTTP status code the hub should return (401, 400, etc.).', type: 'number' },
+  }}
+/>
+
+### `CapabilityError`
+
+Thrown by capability methods (e.g. `sourceControl.listRepositories()`).
+
+<TypeTable
+  type={{
+    retryable: { description: 'Whether the operation is safe to retry.', type: 'boolean' },
+    capability: { description: 'The capability name that threw.', type: 'string | undefined' },
+    method: { description: 'The method name that threw.', type: 'string | undefined' },
+  }}
+/>
+
+```typescript title="lib/deploy.ts" lineNumbers
+import { CapabilityError } from '@apollo-deploy/integrations';
+
+try {
+  await github.sourceControl!.createCommitStatus(tokens, input);
+} catch (error) {
+  if (error instanceof CapabilityError && error.retryable) {
+    // Schedule a retry
+    await queue.enqueue({ type: 'commit-status', payload: input }, { delay: 5000 });
+  } else {
+    throw error;
+  }
+}
+```
+
+### `UnknownAdapterError`
+
+Thrown by `hub.getAdapter(key)` when the key is not registered.
+
+```typescript title="lib/webhooks.ts" lineNumbers
+import { UnknownAdapterError } from '@apollo-deploy/integrations';
+
+try {
+  const adapter = hub.getAdapter('nonexistent');
+} catch (error) {
+  if (error instanceof UnknownAdapterError) {
+    return Response.json({ error: 'Unknown adapter' }, { status: 404 });
+  }
+}
+```
+
+### `DecryptError`
+
+Thrown by the crypto layer when decryption fails — typically means the ciphertext was tampered with or the wrong key was used.
+
+### `CryptoConfigError`
+
+Thrown at startup when the encryption key environment variable is missing or invalid.
+
+```typescript title="lib/crypto.ts" lineNumbers
+import { CryptoConfigError, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
+
+try {
+  const crypto = createCryptoProviderFromEnv();
+} catch (error) {
+  if (error instanceof CryptoConfigError) {
+    console.error('Missing KMS_ROOT_KEY_B64 environment variable');
+    process.exit(1);
+  }
+}
+```
+
+## Catching errors
+
+Use `instanceof` checks in a hierarchy from most-specific to least-specific:
+
+```typescript title="lib/integrations.ts" lineNumbers
+import {
+  AdapterError,
+  CapabilityError,
+  TokenRefreshError,
+  OAuthError,
+} from '@apollo-deploy/integrations';
+
+hub.onEvent('push', async (event, ctx) => {
+  try {
+    await github.sourceControl!.createCommitStatus(tokens, commitStatusInput);
+  } catch (error) {
+    if (error instanceof TokenRefreshError && !error.retryable) {
+      // User needs to re-connect their account
+      await notifyUser(event.data.sender, 'Please reconnect your GitHub account.');
+    } else if (error instanceof CapabilityError && error.retryable) {
+      // Transient — let the job queue retry
+      throw error;
+    } else if (error instanceof AdapterError) {
+      ctx.logger.error({ err: error }, 'Non-retryable adapter error');
+    } else {
+      throw error;
+    }
+  }
+});
+```

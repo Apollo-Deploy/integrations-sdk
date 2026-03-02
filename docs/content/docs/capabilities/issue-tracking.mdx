@@ -1,0 +1,143 @@
+---
+title: Issue Tracking
+description: List, create, update, and comment on issues across Jira, GitLab, and Linear.
+---
+
+The `issue-tracking` capability provides a unified interface for project management tools. Adapters that declare it expose an `issueTracking` property.
+
+**Adapters:** [Jira](/docs/adapters/jira), [GitLab](/docs/adapters/gitlab), [Linear](/docs/adapters/linear)
+
+## Accessing the capability
+
+```typescript title="lib/issues.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const jira = hub.getAdapter('jira');
+const it = jira.issueTracking!;
+```
+
+## Methods
+
+### `listProjects`
+
+List the projects/boards/teams the user has access to.
+
+```typescript lineNumbers
+const projects = await it.listProjects(tokens);
+// projects: ProjectRef[]  — project.id, project.key, project.name
+```
+
+### `listIssues`
+
+Fetch a filtered list of issues.
+
+```typescript lineNumbers
+const issues = await it.listIssues(tokens, {
+  projectId: 'PROJ-001',
+  status: 'open',
+  assigneeId: 'user-123',
+  labels: ['bug', 'deploy-blocker'],
+  page: 1,
+  perPage: 50,
+});
+```
+
+<TypeTable
+  type={{
+    projectId: { description: 'Filter by project or team ID.', type: 'string | undefined' },
+    status: { description: "Filter by status string (e.g. 'open', 'in_progress', 'done').", type: 'string | undefined' },
+    assigneeId: { description: 'Filter by assignee ID.', type: 'string | undefined' },
+    labels: { description: 'Filter by label names.', type: 'string[] | undefined' },
+  }}
+/>
+
+### `getIssue`
+
+Fetch a single issue by its provider-specific ID.
+
+```typescript lineNumbers
+const issue = await it.getIssue(tokens, 'PROJ-42');
+// issue.id, issue.title, issue.status, issue.assignee, issue.labels
+```
+
+### `createIssue`
+
+Create a new issue.
+
+```typescript lineNumbers
+const issue = await it.createIssue(tokens, {
+  projectId: 'PROJ',
+  title: 'Deploy #1234 reverted — investigation needed',
+  description: 'Deployment was reverted due to increased error rate.\n\nDeploy URL: ...',
+  labels: ['incident', 'deploy'],
+  priority: 'high',
+  assigneeId: 'user-abc',
+});
+```
+
+<TypeTable
+  type={{
+    projectId: { description: 'Project or team to create the issue in.', type: 'string' },
+    title: { description: 'Issue title.', type: 'string' },
+    description: { description: 'Issue body (markdown supported).', type: 'string | undefined' },
+    labels: { description: 'Label names to apply.', type: 'string[] | undefined' },
+    priority: { description: "'urgent' | 'high' | 'medium' | 'low'", type: 'string | undefined' },
+    assigneeId: { description: 'Provider user ID to assign to.', type: 'string | undefined' },
+  }}
+/>
+
+### `updateIssue`
+
+Update an existing issue's fields or status.
+
+```typescript lineNumbers
+const updated = await it.updateIssue(tokens, 'PROJ-42', {
+  status: 'done',
+  title: 'Deploy #1234 reverted — resolved',
+});
+```
+
+### `addComment`
+
+Post a comment on an issue.
+
+```typescript lineNumbers
+const comment = await it.addComment(
+  tokens,
+  'PROJ-42',
+  'Deploy has been re-queued. Will retry in 10 minutes.',
+);
+// comment.id, comment.body, comment.author, comment.createdAt
+```
+
+## Types
+
+```typescript
+interface Issue {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  labels: string[];
+  assignee?: ActorInfo;
+  reporter?: ActorInfo;
+  projectId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  htmlUrl: string;
+}
+
+interface IssueComment {
+  id: string;
+  body: string;
+  author: ActorInfo;
+  createdAt: Date;
+}
+
+interface ProjectRef {
+  id: string;
+  key: string;
+  name: string;
+}
+```

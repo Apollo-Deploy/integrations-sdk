@@ -1,0 +1,17 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Adapters---",
+    "...adapters",
+    "---Capabilities---",
+    "...capabilities",
+    "---Reference---",
+    "error-handling",
+    "---Guides---",
+    "...guides",
+    "---API Reference---",
+    "...api"
+  ]
+}

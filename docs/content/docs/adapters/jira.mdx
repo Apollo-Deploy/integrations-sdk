@@ -1,0 +1,69 @@
+---
+title: Jira
+description: Jira Cloud OAuth adapter — issue tracking with rotating refresh tokens and distributed lock support.
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-jira
+```
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createJiraAdapter } from '@apollo-deploy/adapter-jira';
+
+const jira = createJiraAdapter({
+  clientId: process.env.JIRA_CLIENT_ID!,
+  clientSecret: process.env.JIRA_CLIENT_SECRET!,
+  webhookSecret: process.env.JIRA_WEBHOOK_SECRET!,
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `clientId` | `string` | Atlassian OAuth 2.0 Client ID |
+| `clientSecret` | `string` | Atlassian OAuth 2.0 Client Secret |
+| `webhookSecret` | `string` | Shared secret for webhook verification |
+
+## Environment variables
+
+```bash title=".env"
+JIRA_CLIENT_ID=abc123
+JIRA_CLIENT_SECRET=secret
+JIRA_WEBHOOK_SECRET=whsec_your_secret
+```
+
+## OAuth
+
+Jira Cloud uses OAuth 2.0 (3LO). After authorization, `afterAuthorize` is called automatically to discover the user's accessible cloud sites.
+
+```typescript title="lib/jira-oauth.ts" lineNumbers
+const url = adapter.oauth.getAuthorizationUrl({
+  state,
+  scopes: ['read:jira-work', 'write:jira-work', 'read:jira-user', 'offline_access'],
+  redirectUri,
+});
+
+const tokens = await adapter.oauth.exchangeCode({ code, redirectUri });
+// tokens.providerData.cloudId   — required for all API calls
+// tokens.providerData.cloudName — human-readable site name
+```
+
+<Callout type="warn">
+Jira uses **rotating refresh tokens**. Every refresh call invalidates the old refresh token and issues a new one. You **must** atomically swap both tokens in your database — the SDK sets `rotatesRefreshToken: true` and `requiresRefreshLock: true` to signal this.
+</Callout>
+
+## Token metadata
+
+| Field | Value |
+|-------|-------|
+| `expiresInSeconds` | `3600` (1 hour) |
+| `refreshable` | `true` |
+| `rotatesRefreshToken` | `true` ⚠️ |
+| `requiresRefreshLock` | `true` ⚠️ |
+
+## Capabilities
+
+- [`issue-tracking`](/docs/capabilities/issue-tracking) — list/get/create/update issues, add comments, list projects

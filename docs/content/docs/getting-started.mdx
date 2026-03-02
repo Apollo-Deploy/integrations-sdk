@@ -1,0 +1,155 @@
+---
+title: Getting Started
+description: Install the SDK, configure your first adapter, and route your first webhook in under five minutes.
+type: guide
+---
+
+## Installation
+
+Install the core package and whichever adapter packages you need:
+
+```bash title="Terminal"
+# Core (required)
+bun add @apollo-deploy/integrations
+
+# Pick your adapters
+bun add @apollo-deploy/adapter-github
+bun add @apollo-deploy/adapter-slack
+bun add @apollo-deploy/adapter-jira
+bun add @apollo-deploy/adapter-linear
+bun add @apollo-deploy/adapter-gitlab
+bun add @apollo-deploy/adapter-discord
+bun add @apollo-deploy/adapter-apple
+bun add @apollo-deploy/adapter-google-play
+```
+
+## Set up environment variables
+
+The crypto layer requires a root key. Generate one and add it to your `.env`:
+
+```bash title="Terminal"
+# Generate a 32-byte random key, base64-encoded
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+```bash title=".env"
+KMS_ROOT_KEY_B64=<your-generated-key>
+
+# GitHub App
+GITHUB_APP_ID=123456
+GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
+GITHUB_WEBHOOK_SECRET=whsec_...
+
+# Slack Bot
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+```
+
+## Create the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
+import { createGithubAdapter } from '@apollo-deploy/adapter-github';
+import { createSlackAdapter } from '@apollo-deploy/adapter-slack';
+
+export const hub = new IntegrationHub({
+  adapters: {
+    github: createGithubAdapter({
+      appId: process.env.GITHUB_APP_ID!,
+      privateKey: process.env.GITHUB_PRIVATE_KEY!,
+      webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+    }),
+    slack: createSlackAdapter({
+      botToken: process.env.SLACK_BOT_TOKEN!,
+      signingSecret: process.env.SLACK_SIGNING_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
+```
+
+## Initialize adapters
+
+Call `hub.initialize()` once at startup. This runs each adapter's `onRegister` then `onReady` lifecycle hooks:
+
+```typescript title="lib/integrations.ts" lineNumbers
+await hub.initialize();
+```
+
+## Subscribe to events
+
+Register handlers for normalized events before your server starts accepting traffic:
+
+```typescript title="lib/integrations.ts" lineNumbers
+hub.onEvent('push', async (event, ctx) => {
+  ctx.logger.info({ repo: event.data.repository }, 'New push received');
+});
+
+hub.onEvent(['issue.created', 'issue.updated'], async (event, ctx) => {
+  const issue = event.data;
+  ctx.logger.info({ title: issue.title }, 'Issue changed');
+});
+
+// Wildcard — fires for every event across all adapters
+hub.onAnyEvent(async (event, ctx) => {
+  ctx.logger.debug({ provider: event.provider, type: event.eventType }, 'Event received');
+});
+```
+
+## Wire webhook routes
+
+Point each provider's webhook endpoint at the hub. Here's an example using [Hono](https://hono.dev):
+
+```typescript title="app/webhooks/[provider]/route.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+app.post('/webhooks/:provider', async (c) => {
+  const provider = c.req.param('provider'); // 'github' | 'slack' | ...
+
+  const response = await hub.webhooks[provider](
+    {
+      rawBody: Buffer.from(await c.req.arrayBuffer()),
+      headers: Object.fromEntries(c.req.raw.headers),
+      body: await c.req.json(),
+    },
+    {
+      secret: process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`]!,
+      waitUntil: c.executionCtx.waitUntil.bind(c.executionCtx),
+    },
+  );
+
+  return c.json(response.body ?? {}, response.statusCode);
+});
+```
+
+The hub handles signature verification → synchronous challenges (e.g. Slack `url_verification`) → async event dispatch via `waitUntil`.
+
+## Call a capability
+
+Once you have a stored `TokenSet` for a user, call capability methods directly:
+
+```typescript title="lib/deploy.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const github = hub.getAdapter('github');
+
+// Create a commit status after a deployment
+await github.sourceControl!.createCommitStatus(tokens, {
+  repo: { owner: 'acme', name: 'api' },
+  sha: commitSha,
+  state: 'success',
+  context: 'apollo/deploy',
+  description: 'Deployed to production',
+  targetUrl: `https://app.apollo.dev/deploys/${deployId}`,
+});
+```
+
+## Next steps
+
+<Cards>
+  <Card title="Adapters" description="Configuration reference for every provider adapter." href="/docs/adapters" />
+  <Card title="Capabilities" description="Available methods for source control, messaging, issue tracking, and app stores." href="/docs/capabilities" />
+  <Card title="Error handling" description="Typed error classes and how to catch them." href="/docs/error-handling" />
+  <Card title="API Reference" description="Full API docs for IntegrationHub, defineAdapter, and crypto." href="/docs/api" />
+</Cards>

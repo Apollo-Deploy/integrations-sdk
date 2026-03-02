@@ -1,0 +1,155 @@
+---
+title: Crypto
+description: API reference for the CryptoProvider, AES-256-GCM encryption, and HKDF key derivation.
+---
+
+```typescript
+import {
+  createCryptoProvider,
+  createCryptoProviderFromEnv,
+  encryptGCM,
+  decryptGCM,
+  deriveDataKey,
+  getRootKeyFromEnv,
+  zeroize,
+} from '@apollo-deploy/integrations';
+import type { CryptoProvider, EncryptedEnvelope, EncryptionContext } from '@apollo-deploy/integrations';
+```
+
+## High-level API
+
+### `createCryptoProviderFromEnv()`
+
+```typescript
+createCryptoProviderFromEnv(): CryptoProvider
+```
+
+Creates a `CryptoProvider` by reading `KMS_ROOT_KEY_B64` from `process.env`. Throws `CryptoConfigError` if the variable is missing or the key is not valid base64.
+
+```bash title=".env"
+KMS_ROOT_KEY_B64=<base64-encoded 32-byte key>
+```
+
+### `createCryptoProvider(rootKey)`
+
+```typescript
+createCryptoProvider(rootKey: Buffer): CryptoProvider
+```
+
+Creates a `CryptoProvider` from an explicit 32-byte root key buffer.
+
+### `getRootKeyFromEnv()`
+
+```typescript
+getRootKeyFromEnv(): Buffer
+```
+
+Reads and decodes `KMS_ROOT_KEY_B64`. Useful when you need the raw key for other operations.
+
+## `CryptoProvider`
+
+The `CryptoProvider` interface provides high-level encrypt/decrypt with context-bound key derivation.
+
+```typescript
+interface CryptoProvider {
+  encrypt(plaintext: string, context: EncryptionContext): Promise<EncryptedEnvelope>;
+  decrypt(envelope: EncryptedEnvelope, context: EncryptionContext): Promise<string>;
+}
+```
+
+### `encrypt(plaintext, context)`
+
+Derives a data key from the root key using HKDF-SHA256 bound to `context`, then encrypts with AES-256-GCM.
+
+```typescript title="lib/tokens.ts" lineNumbers
+const crypto = createCryptoProviderFromEnv();
+
+const envelope = await crypto.encrypt(accessToken, {
+  orgId: 'org_123',
+  entityId: 'user_456',
+  purpose: 'oauth-token',
+});
+
+// Persist envelope in your database
+await db.connections.update({ encryptedAccessToken: envelope });
+```
+
+### `decrypt(envelope, context)`
+
+Re-derives the data key from the same context and decrypts. Throws `DecryptError` if the auth tag fails (wrong key or tampered ciphertext).
+
+```typescript title="lib/tokens.ts" lineNumbers
+const accessToken = await crypto.decrypt(
+  connection.encryptedAccessToken,
+  { orgId: 'org_123', entityId: 'user_456', purpose: 'oauth-token' },
+);
+```
+
+### `EncryptionContext`
+
+<TypeTable
+  type={{
+    orgId: { description: 'Organization or tenant ID — binds the key to a specific tenant.', type: 'string' },
+    entityId: { description: 'Entity ID — typically user or connection ID.', type: 'string' },
+    purpose: { description: "Usage label for key separation: 'oauth-token', 'webhook-secret', etc.", type: 'string' },
+  }}
+/>
+
+### `EncryptedEnvelope`
+
+The serializable ciphertext object stored in your database.
+
+<TypeTable
+  type={{
+    ciphertext: { description: 'Base64-encoded AES-256-GCM ciphertext.', type: 'string' },
+    iv: { description: 'Base64-encoded 12-byte initialization vector.', type: 'string' },
+    tag: { description: 'Base64-encoded 16-byte authentication tag.', type: 'string' },
+    version: { description: 'Envelope version for future key rotation support.', type: 'number' },
+  }}
+/>
+
+## Low-level API
+
+Use the low-level functions only when you need fine-grained control.
+
+### `encryptGCM(key, plaintext)`
+
+```typescript
+encryptGCM(key: Buffer, plaintext: string): Promise<EncryptedEnvelope>
+```
+
+Encrypts `plaintext` with the provided 32-byte AES-256-GCM key.
+
+### `decryptGCM(key, envelope)`
+
+```typescript
+decryptGCM(key: Buffer, envelope: EncryptedEnvelope): Promise<string>
+```
+
+Decrypts an envelope with the provided key. Throws `DecryptError` on auth tag mismatch.
+
+### `deriveDataKey(rootKey, context)`
+
+```typescript
+deriveDataKey(rootKey: Buffer, context: EncryptionContext): Promise<Buffer>
+```
+
+Derives a 32-byte data key using HKDF-SHA256. The `EncryptionContext` fields are used as HKDF info, binding the derived key to a specific tenant/entity/purpose.
+
+### `zeroize(buffer)`
+
+```typescript
+zeroize(buffer: Buffer): void
+```
+
+Overwrites a key buffer with zeros to prevent it from lingering in memory. Call this after you're done with a derived key:
+
+```typescript lineNumbers
+const dataKey = await deriveDataKey(rootKey, context);
+try {
+  const envelope = await encryptGCM(dataKey, plaintext);
+  return envelope;
+} finally {
+  zeroize(dataKey);
+}
+```

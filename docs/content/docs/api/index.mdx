@@ -1,0 +1,69 @@
+---
+title: API Reference
+description: Complete reference for all exported types, classes, and functions in @apollo-deploy/integrations.
+type: overview
+---
+
+All exports are available from the single core package:
+
+```typescript
+import { ... } from '@apollo-deploy/integrations';
+```
+
+## Classes
+
+| Symbol | Description |
+|--------|-------------|
+| [`IntegrationHub`](/docs/api/integration-hub) | Main coordinator — registers adapters, routes webhooks, dispatches events |
+
+## Factory Functions
+
+| Symbol | Description |
+|--------|-------------|
+| [`defineAdapter()`](/docs/api/define-adapter) | Creates a type-safe adapter factory from a definition object |
+| [`createCryptoProvider()`](/docs/api/crypto) | Create a crypto provider from an explicit root key |
+| [`createCryptoProviderFromEnv()`](/docs/api/crypto) | Create a crypto provider reading `KMS_ROOT_KEY_B64` from env |
+| [`encryptGCM()`](/docs/api/crypto) | Low-level AES-256-GCM encrypt |
+| [`decryptGCM()`](/docs/api/crypto) | Low-level AES-256-GCM decrypt |
+| [`deriveDataKey()`](/docs/api/crypto) | HKDF-SHA256 key derivation |
+| [`getRootKeyFromEnv()`](/docs/api/crypto) | Read and decode root key from env |
+| [`zeroize()`](/docs/api/crypto) | Securely zero a key buffer |
+
+## Interfaces
+
+| Symbol | Description |
+|--------|-------------|
+| [`IntegrationAdapter`](/docs/api/integration-hub#integrationadapter) | Contract every adapter must implement |
+| [`AdapterMetadata`](/docs/api/integration-hub#adaptermetadata) | Icon, description, dateAdded, category, docsUrl, websiteUrl |
+| [`AdapterInfo`](/docs/api/integration-hub#adapterinfo) | Snapshot returned by `hub.listAdapters()` |
+| [`OAuthHandler`](/docs/api/oauth) | Provider OAuth flow contract |
+| [`WebhookHandler`](/docs/api/webhook) | Provider webhook ingestion contract |
+| [`HubConfig`](/docs/api/integration-hub#hubconfig) | Constructor config for `IntegrationHub` |
+| [`AdapterDefinition`](/docs/api/define-adapter#adapterdefinition) | Input object for `defineAdapter()` |
+| [`TokenSet`](/docs/api/oauth#tokenset) | Normalized OAuth tokens |
+| [`ProviderIdentity`](/docs/api/oauth#provideridentity) | Provider user identity |
+| [`IntegrationEvent`](/docs/api/webhook#integrationevent) | Normalized event emitted by adapters |
+| [`TokenMetadata`](/docs/api/integration-hub#tokenmetadata) | Token lifecycle hints |
+| [`CryptoProvider`](/docs/api/crypto#cryptoprovider) | Encrypt/decrypt interface |
+| [`EncryptedEnvelope`](/docs/api/crypto#encryptedenvelope) | Ciphertext + metadata |
+
+## Error Classes
+
+| Symbol | Description |
+|--------|-------------|
+| [`AdapterError`](/docs/api/errors#adaptererror) | Base error class |
+| [`OAuthError`](/docs/api/errors#oautherror) | OAuth flow failure |
+| [`WebhookError`](/docs/api/errors#webhookerror) | Webhook processing failure (includes `statusCode`) |
+| [`CapabilityError`](/docs/api/errors#capabilityerror) | Capability method failure |
+| [`TokenRefreshError`](/docs/api/errors#tokenrefresherror) | Token refresh failure |
+| [`UnknownAdapterError`](/docs/api/errors#unknownadaptererror) | Adapter key not registered |
+| [`DecryptError`](/docs/api/errors#decrypterror) | Decryption / auth tag failure |
+| [`CryptoConfigError`](/docs/api/errors#cryptoconfigerror) | Missing or invalid encryption key |
+
+## Type Aliases
+
+| Symbol | Description |
+|--------|-------------|
+| `AdapterCapability` | `'source-control' \| 'messaging' \| 'issue-tracking' \| 'app-store' \| 'ci-cd'` |
+| `EventHandler` | `(event: IntegrationEvent, context: EventContext) => Promise<void>` |
+| `WebhookRouter<TAdapters>` | Type-safe map of `hubKey → (req, opts) => Promise<WebhookResponse>` |

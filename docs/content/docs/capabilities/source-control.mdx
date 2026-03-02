@@ -1,0 +1,139 @@
+---
+title: Source Control
+description: Repositories, branches, pull requests, commits, and commit statuses.
+---
+
+The `source-control` capability provides a unified interface for reading and writing to code repositories. Adapters that declare it expose a `sourceControl` property on the adapter instance.
+
+**Adapters:** [GitHub](/docs/adapters/github), [GitLab](/docs/adapters/gitlab)
+
+## Accessing the capability
+
+```typescript title="lib/deploy.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const github = hub.getAdapter('github');
+const sc = github.sourceControl!;
+
+// Or discover all adapters with this capability
+const allScAdapters = hub.getAdaptersByCapability('source-control');
+```
+
+## Methods
+
+### `listRepositories`
+
+List repositories accessible to the authenticated user/installation.
+
+```typescript lineNumbers
+const repos = await sc.listRepositories(tokens, { page: 1, perPage: 30 });
+// repos.items: Repository[]
+// repos.totalCount: number
+// repos.hasNextPage: boolean
+```
+
+### `getRepository`
+
+Fetch a single repository by its provider-specific ID.
+
+```typescript lineNumbers
+const repo = await sc.getRepository(tokens, 'owner/repo-name');
+// repo.id, repo.name, repo.fullName, repo.defaultBranch, repo.private
+```
+
+### `listBranches`
+
+List branches for a repository.
+
+```typescript lineNumbers
+const branches = await sc.listBranches(tokens, 'owner/repo-name', { perPage: 50 });
+// branches.items: Branch[]  — branch.name, branch.sha, branch.protected
+```
+
+### `getPullRequest`
+
+Fetch a pull request by number.
+
+```typescript lineNumbers
+const pr = await sc.getPullRequest(tokens, 'owner/repo-name', 42);
+// pr.number, pr.title, pr.state, pr.headSha, pr.baseBranch, pr.author
+```
+
+### `createCommitStatus`
+
+Post a status check to a commit. Used to reflect deployment outcomes back to the PR.
+
+```typescript lineNumbers
+await sc.createCommitStatus(tokens, 'owner/repo-name', commitSha, {
+  state: 'success',          // 'pending' | 'running' | 'success' | 'failure' | 'error'
+  context: 'apollo/deploy',  // Unique name for this status
+  description: 'Deployed to production',
+  targetUrl: `https://app.apollo.dev/deploys/${deployId}`,
+});
+```
+
+<TypeTable
+  type={{
+    state: { description: 'Status state.', type: "'pending' | 'running' | 'success' | 'failure' | 'error'" },
+    context: { description: 'Unique identifier for this status check.', type: 'string' },
+    description: { description: 'Short human-readable description (max ~140 chars).', type: 'string | undefined' },
+    targetUrl: { description: 'Link to the full build/deploy details page.', type: 'string | undefined' },
+  }}
+/>
+
+### `listCommits`
+
+List commits on a branch.
+
+```typescript lineNumbers
+const commits = await sc.listCommits(tokens, 'owner/repo-name', {
+  branch: 'main',
+  perPage: 20,
+  since: new Date('2024-01-01'),
+  until: new Date(),
+});
+// commits.items: Commit[]  — commit.sha, commit.message, commit.author, commit.timestamp
+```
+
+## Types
+
+```typescript
+interface Repository {
+  id: string;
+  name: string;
+  fullName: string;       // 'owner/name'
+  description?: string;
+  private: boolean;
+  defaultBranch: string;
+  cloneUrl: string;
+  htmlUrl: string;
+  updatedAt: Date;
+}
+
+interface Branch {
+  name: string;
+  sha: string;
+  protected: boolean;
+}
+
+interface PullRequest {
+  number: number;
+  title: string;
+  state: 'open' | 'closed' | 'merged';
+  headSha: string;
+  headBranch: string;
+  baseBranch: string;
+  author: ActorInfo;
+  createdAt: Date;
+  updatedAt: Date;
+  htmlUrl: string;
+}
+
+interface Commit {
+  sha: string;
+  message: string;
+  author: ActorInfo;
+  timestamp: Date;
+  htmlUrl: string;
+}
+```

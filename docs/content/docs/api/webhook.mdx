@@ -1,0 +1,114 @@
+---
+title: Webhook
+description: API reference for WebhookHandler, IntegrationEvent, and related types.
+---
+
+```typescript
+import type { WebhookHandler, IntegrationEvent } from '@apollo-deploy/integrations';
+```
+
+## `WebhookHandler`
+
+The contract every adapter's webhook implementation must satisfy. Access via `adapter.webhook`.
+
+### `supportedEvents`
+
+```typescript
+readonly supportedEvents: readonly string[]
+```
+
+Event types this adapter can receive and normalize (e.g. `['push', 'pull_request.opened']`).
+
+### `verifySignature(params)`
+
+```typescript
+verifySignature(params: VerifyParams): boolean
+```
+
+Verifies the webhook request signature. Returns `false` → hub responds `401`.
+
+**`VerifyParams`**
+
+<TypeTable
+  type={{
+    rawBody: { description: 'Raw request body Buffer — must NOT be post-processed.', type: 'Buffer' },
+    headers: { description: 'Request headers.', type: 'Record<string, string>' },
+    secret: { description: 'Signing secret passed from WebhookHandlerOptions.', type: 'string' },
+  }}
+/>
+
+### `parseEvent(params)`
+
+```typescript
+parseEvent(params: ParseParams): IntegrationEvent
+```
+
+Parses the raw webhook payload into a normalized `IntegrationEvent`.
+
+**`ParseParams`**
+
+<TypeTable
+  type={{
+    body: { description: 'Parsed JSON body.', type: 'unknown' },
+    headers: { description: 'Request headers.', type: 'Record<string, string>' },
+  }}
+/>
+
+### `getDeliveryId(headers, body)`
+
+```typescript
+getDeliveryId(headers: Record<string, string>, body: unknown): string
+```
+
+Extracts a unique delivery ID for idempotent event deduplication. Provider-specific:
+- **GitHub**: `X-GitHub-Delivery` header
+- **Slack**: hash of `X-Slack-Request-Timestamp` + body
+- **Linear**: `linear-delivery` header
+- **Discord**: body hash (no delivery header)
+
+### `handleSynchronous(params)` (optional)
+
+```typescript
+handleSynchronous?(params: ParseParams): SynchronousResponse | null
+```
+
+Handle synchronous webhook challenges that require an inline response. Return `null` to proceed with normal async processing.
+
+Used by Slack for `url_verification` challenges.
+
+**`SynchronousResponse`**
+
+<TypeTable
+  type={{
+    statusCode: { description: 'HTTP status code to respond with.', type: 'number' },
+    body: { description: 'Response body (e.g. { challenge: "..." } for Slack).', type: 'unknown' },
+    skipAsyncProcessing: { description: 'If true, skip async event dispatch after responding.', type: 'boolean' },
+  }}
+/>
+
+## `IntegrationEvent`
+
+Normalized event shape emitted by all adapters. Received in `hub.onEvent()` handlers.
+
+<TypeTable
+  type={{
+    provider: { description: "Adapter ID that emitted this event: 'github', 'slack', etc.", type: 'string' },
+    eventType: { description: "Normalized event type: 'push', 'issue.created', 'message.created', etc.", type: 'string' },
+    domain: { description: "Capability domain: 'source-control', 'messaging', 'issue-tracking', 'app-store'.", type: 'string' },
+    deliveryId: { description: 'Provider-assigned delivery ID for deduplication.', type: 'string' },
+    correlationId: { description: 'Correlation ID for tracing (often same as deliveryId).', type: 'string' },
+    timestamp: { description: 'When the event was emitted.', type: 'Date' },
+    data: { description: 'Normalized event payload — shape depends on eventType.', type: 'unknown' },
+    rawPayload: { description: 'Original unmodified provider payload, for debugging.', type: 'unknown' },
+  }}
+/>
+
+```typescript title="lib/integrations.ts" lineNumbers
+hub.onEvent('push', async (event, ctx) => {
+  console.log(event.provider);    // 'github'
+  console.log(event.eventType);   // 'push'
+  console.log(event.domain);      // 'source-control'
+  console.log(event.deliveryId);  // 'abc-def-123'
+  console.log(event.data);        // normalized push data
+});
+```

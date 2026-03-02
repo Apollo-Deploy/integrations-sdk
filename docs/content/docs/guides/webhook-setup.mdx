@@ -1,0 +1,155 @@
+---
+title: Webhook Setup
+description: Wire provider webhooks to IntegrationHub in Next.js, Hono, or any Node.js framework.
+type: guide
+prerequisites:
+  - /docs/getting-started
+---
+
+Each provider sends inbound HTTP requests to a URL you control. The `IntegrationHub` handles every step: signature verification, synchronous challenges, event parsing, and async dispatch.
+
+## How `hub.webhooks` works
+
+```
+Inbound POST /webhooks/github
+       ↓
+ hub.webhooks.github(req, opts)
+       ↓
+ 1. Adapter verifies signature (X-Hub-Signature-256)
+ 2. Adapter checks for synchronous challenge (Slack url_verification)
+    → If found: return 200 + challenge body immediately
+ 3. Return 200 immediately
+ 4. Parse event + emit normalized IntegrationEvent (via waitUntil)
+```
+
+The `waitUntil` pattern lets you respond quickly and process asynchronously — essential for serverless environments with tight response deadlines.
+
+## Next.js App Router
+
+```typescript title="app/api/webhooks/[provider]/route.ts" lineNumbers
+import { NextRequest, NextResponse } from 'next/server';
+import { hub } from '@/lib/integrations';
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ provider: string }> },
+) {
+  const { provider } = await params;
+  const rawBody = Buffer.from(await request.arrayBuffer());
+
+  const response = await hub.webhooks[provider](
+    {
+      rawBody,
+      headers: Object.fromEntries(request.headers),
+      body: JSON.parse(rawBody.toString()),
+    },
+    {
+      secret: process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`]!,
+      waitUntil: (p) => (globalThis as any).waitUntil?.(p),
+    },
+  );
+
+  return NextResponse.json(response.body ?? {}, { status: response.statusCode });
+}
+```
+
+## Hono
+
+```typescript title="src/routes/webhooks.ts" lineNumbers
+import { Hono } from 'hono';
+import { hub } from '../lib/integrations.js';
+
+const webhooks = new Hono();
+
+webhooks.post('/:provider', async (c) => {
+  const provider = c.req.param('provider');
+  const rawBody = Buffer.from(await c.req.arrayBuffer());
+
+  const response = await hub.webhooks[provider](
+    {
+      rawBody,
+      headers: Object.fromEntries(c.req.raw.headers),
+      body: JSON.parse(rawBody.toString()),
+    },
+    {
+      secret: process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`]!,
+      waitUntil: c.executionCtx.waitUntil.bind(c.executionCtx),
+    },
+  );
+
+  return c.json(response.body ?? {}, response.statusCode);
+});
+
+export default webhooks;
+```
+
+## Express / Fastify
+
+```typescript title="src/webhooks.ts" lineNumbers
+import express from 'express';
+import { hub } from './lib/integrations.js';
+
+const router = express.Router();
+
+// Must use raw body — don't let Express parse JSON before this middleware
+router.post(
+  '/:provider',
+  express.raw({ type: '*/*' }),
+  async (req, res) => {
+    const { provider } = req.params;
+
+    const response = await hub.webhooks[provider](
+      {
+        rawBody: req.body as Buffer,
+        headers: req.headers as Record<string, string>,
+        body: JSON.parse((req.body as Buffer).toString()),
+      },
+      {
+        secret: process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`]!,
+      },
+    );
+
+    res.status(response.statusCode).json(response.body ?? {});
+  },
+);
+
+export default router;
+```
+
+<Callout type="warn">
+**Always use the raw body for signature verification.** Express's `json()` middleware parses the body before webhooks can verify it, causing signature failures. Use `express.raw()` on your webhook routes, or read the raw buffer before parsing.
+</Callout>
+
+## Provider-specific setup
+
+### GitHub
+
+1. Go to your GitHub App → **Webhook URL**: `https://yourapp.com/api/webhooks/github`
+2. Set **Content type** to `application/json`
+3. Set **Webhook secret** — this is your `GITHUB_WEBHOOK_SECRET`
+4. Subscribe to: `push`, `pull_request`, `pull_request_review`, `issues`, `deployment_status`, `check_run`, `release`
+
+### Slack
+
+1. Go to your Slack App → **Event Subscriptions** → Enable
+2. Set **Request URL**: `https://yourapp.com/api/webhooks/slack`
+   - Slack verifies the URL immediately with `url_verification` — the hub handles this automatically
+3. Subscribe to bot events: `message.channels`, `message.groups`, `reaction_added`, `reaction_removed`
+
+### Discord
+
+1. Go to your Discord Application → **Interactions Endpoint URL**: `https://yourapp.com/api/webhooks/discord`
+2. Add the `DISCORD_PUBLIC_KEY` to your environment for Ed25519 verification
+
+### Linear
+
+1. Go to your Linear Workspace Settings → **API** → **Webhooks**
+2. Add webhook URL: `https://yourapp.com/api/webhooks/linear`
+3. Check the resource types you need (Issues, Comments, etc.)
+4. Copy the signing secret → `LINEAR_WEBHOOK_SECRET`
+
+### Jira
+
+1. Go to Jira → **Settings** → **System** → **WebHooks**
+2. URL: `https://yourapp.com/api/webhooks/jira`
+3. Subscribe to: `jira:issue_created`, `jira:issue_updated`, `jira:issue_deleted`, `comment_created`

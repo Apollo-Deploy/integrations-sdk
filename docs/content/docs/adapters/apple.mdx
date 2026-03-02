@@ -1,0 +1,70 @@
+---
+title: Apple App Store Connect
+description: Apple App Store Connect adapter — app store capability using JWT-based authentication.
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-apple
+```
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createAppleAdapter } from '@apollo-deploy/adapter-apple';
+
+const apple = createAppleAdapter({
+  issuerId: process.env.APPLE_ISSUER_ID!,
+  keyId: process.env.APPLE_KEY_ID!,
+  privateKey: process.env.APPLE_PRIVATE_KEY!,
+  vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
+  // Optional: webhook shared secret
+  webhookSecret: process.env.APPLE_WEBHOOK_SECRET,
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `issuerId` | `string` | Issuer ID from App Store Connect → Keys |
+| `keyId` | `string` | Key ID of your API key |
+| `privateKey` | `string` | PEM-encoded `.p8` private key contents |
+| `vendorNumber` | `string` | Vendor number for financial/sales reports |
+| `webhookSecret` | `string?` | Shared secret for App Store Server Notifications |
+
+## Environment variables
+
+```bash title=".env"
+APPLE_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+APPLE_KEY_ID=XXXXXXXXXX
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGH...\n-----END PRIVATE KEY-----"
+APPLE_VENDOR_NUMBER=12345678
+APPLE_WEBHOOK_SECRET=your_notification_password
+```
+
+## Authentication
+
+App Store Connect uses **JWT authentication** — a short-lived JWT is generated from your private key and sent as a Bearer token. JWTs are valid for **20 minutes maximum** and are generated fresh per request.
+
+There is no OAuth flow or user authorization — access is granted via API keys created in App Store Connect.
+
+<Callout type="info">
+`refreshable` is `false`. The adapter generates a new JWT for each request rather than refreshing a stored token.
+</Callout>
+
+## App Store Server Notifications
+
+Apple sends webhook notifications for subscription events (renewals, cancellations, refunds). These are signed `signedTransactionInfo` JWTs verified against Apple's root certificates.
+
+## Token metadata
+
+| Field | Value |
+|-------|-------|
+| `expiresInSeconds` | `1200` (20 minutes) |
+| `refreshable` | `false` |
+| `rotatesRefreshToken` | `false` |
+| `requiresRefreshLock` | `false` |
+
+## Capabilities
+
+- [`app-store`](/docs/capabilities/app-store) — apps, builds, TestFlight, releases, reviews, ratings, beta groups, vitals
