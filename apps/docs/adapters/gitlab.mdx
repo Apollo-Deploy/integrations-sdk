@@ -1,0 +1,381 @@
+---
+title: GitLab
+description: GitLab OAuth adapter — source control and issue tracking with personal or group access tokens, self-hosted support.
+---
+
+## Overview
+
+The GitLab adapter supports both **GitLab.com** and **self-hosted (self-managed) GitLab** instances. It uses standard OAuth 2.0 with long-lived refresh tokens and verifies webhooks via a shared-secret token header.
+
+**Capabilities:** [`source-control`](/docs/capabilities/source-control), [`issue-tracking`](/docs/capabilities/issue-tracking)
+
+**Auth model:** OAuth 2.0 + refresh tokens
+
+**Token lifetime:** 2 hours, refreshable with standard `refresh_token` grant
+
+---
+
+## Prerequisites
+
+1. In GitLab, go to your **User Settings → Applications** (for user-level) or **Group → Settings → Applications** (for group-level), or **Admin → Applications** (for admin/instance-level)
+2. Set **Name**, check the **Redirect URI** (e.g. `https://yourapp.com/oauth/callback/gitlab`)
+3. Select required **Scopes** (see table below)
+4. Save — note the **Application ID** and **Secret**
+5. For webhooks: in each project → **Settings → Webhooks**, set your endpoint URL and a **Secret Token**
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-gitlab
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createGitlabAdapter } from '@apollo-deploy/adapter-gitlab';
+
+const gitlab = createGitlabAdapter({
+  clientId: process.env.GITLAB_CLIENT_ID!,
+  clientSecret: process.env.GITLAB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITLAB_WEBHOOK_SECRET!,
+  // Optional: self-managed GitLab instance
+  instanceUrl: process.env.GITLAB_INSTANCE_URL,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | `string` | ✅ | OAuth Application ID (not the app name) |
+| `clientSecret` | `string` | ✅ | OAuth Application Secret |
+| `webhookSecret` | `string` | ✅ | Shared token used in `X-Gitlab-Token` header verification |
+| `instanceUrl` | `string?` | — | Base URL for self-managed GitLab (default: `https://gitlab.com`) |
+| `redirectUri` | `string?` | — | Default redirect URI (can be overridden per-request) |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+GITLAB_CLIENT_ID=abc123def456
+GITLAB_CLIENT_SECRET=gloas-xxxxxxxxxxxxxxxx
+GITLAB_WEBHOOK_SECRET=whsec_your_secret_here
+
+# Self-hosted only
+GITLAB_INSTANCE_URL=https://gitlab.yourcompany.com
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createGitlabAdapter } from '@apollo-deploy/adapter-gitlab';
+
+const hub = new IntegrationHub();
+
+hub.register('gitlab', createGitlabAdapter({
+  clientId: process.env.GITLAB_CLIENT_ID!,
+  clientSecret: process.env.GITLAB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITLAB_WEBHOOK_SECRET!,
+  instanceUrl: process.env.GITLAB_INSTANCE_URL,
+}));
+
+await hub.initialize();
+
+hub.onEvent('gitlab', (event) => {
+  console.log('GitLab event:', event.eventType, event.data);
+});
+```
+
+---
+
+## OAuth flow
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/gitlab-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('gitlab');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(),   // Store in session for CSRF protection
+  scopes: ['read_api', 'read_repository', 'write_repository'],
+  redirectUri: 'https://yourapp.com/oauth/callback/gitlab',
+});
+
+// Redirect user to the returned URL
+```
+
+### Recommended scopes
+
+| Scope | Description |
+|-------|-------------|
+| `read_api` | Read access to all API endpoints including repos, MRs, issues |
+| `read_repository` | Read access to repository contents |
+| `write_repository` | Push commits, create tags/branches |
+| `read_user` | Access to user profile and email |
+| `openid` | OpenID Connect authentication |
+| `offline_access` | Required to receive a refresh token |
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/gitlab/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/gitlab',
+});
+
+// tokens.accessToken          — Bearer token for API calls
+// tokens.refreshToken         — Long-lived refresh token
+// tokens.expiresAt            — 2 hours from now
+// tokens.scope                — space-separated granted scopes
+// tokens.providerData         — see below
+```
+
+### `tokens.providerData` reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `instanceUrl` | `string` | The GitLab instance URL (useful for self-hosted) |
+
+### Step 3 — Refresh tokens
+
+Access tokens expire after **2 hours**. Refresh using the standard refresh token:
+
+```typescript
+const refreshed = await adapter.oauth.refreshToken(tokens.refreshToken!);
+// refreshed.accessToken — new access token
+// refreshed.refreshToken — same refresh token (rotatesRefreshToken: false)
+// refreshed.expiresAt — 2 hours from now
+```
+
+<Callout type="info">
+GitLab does **not** rotate refresh tokens by default. `requiresRefreshLock` is `false` — parallel refresh calls are safe.
+</Callout>
+
+### Step 4 — Get identity
+
+```typescript
+const identity = await adapter.oauth.getIdentity(tokens.accessToken);
+// identity.providerAccountId  — GitLab user numeric ID
+// identity.displayName        — User's full name
+// identity.email              — Primary email
+// identity.avatarUrl          — Profile picture URL
+```
+
+---
+
+## Webhook events
+
+GitLab uses **token comparison** (not HMAC) for webhook verification. It sends `X-Gitlab-Token: <your_secret>` with every delivery. The adapter performs a constant-time comparison.
+
+<Callout type="warn">
+GitLab does **not** use HMAC — it sends your raw secret in plaintext in the header. Use a long random string (≥ 32 chars) as your webhook secret.
+</Callout>
+
+### Setting up webhooks in GitLab
+
+In your project → **Settings → Webhooks:**
+- URL: `https://yourapp.com/webhooks/gitlab`
+- Secret token: value of `GITLAB_WEBHOOK_SECRET`
+- Check the event types you want to receive
+
+### Wiring the endpoint
+
+```typescript title="app/webhooks/gitlab/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.gitlab({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported events
+
+| GitLab event (`X-Gitlab-Event`) | Action / attribute | Normalized `eventType` | Domain |
+|---|---|---|---|
+| `Push Hook` | — | `push_hook` | `source-control` |
+| `Tag Push Hook` | — | `tag_push_hook` | `source-control` |
+| `Merge Request Hook` | `open` | `merge_request_hook.open` | `source-control` |
+| `Merge Request Hook` | `close` | `merge_request_hook.close` | `source-control` |
+| `Merge Request Hook` | `merge` | `merge_request_hook.merge` | `source-control` |
+| `Merge Request Hook` | `reopen` | `merge_request_hook.reopen` | `source-control` |
+| `Note Hook` | — | `note_hook` | `issue-tracking` |
+| `Confidential Note Hook` | — | `confidential_note_hook` | `issue-tracking` |
+| `Issue Hook` | `open` / `close` / `update` | `issue_hook.<action>` | `issue-tracking` |
+| `Confidential Issues Hook` | — | `confidential_issues_hook` | `issue-tracking` |
+| `Pipeline Hook` | — | `pipeline_hook` | `ci-cd` |
+| `Job Hook` | — | `job_hook` | `ci-cd` |
+| `Deployment Hook` | — | `deployment_hook` | `ci-cd` |
+| `Release Hook` | — | `release_hook` | `source-control` |
+
+### Delivery ID
+
+GitLab sends `X-Gitlab-Event-UUID` for deduplication. The adapter uses this as the delivery ID.
+
+---
+
+## Source Control capability
+
+```typescript
+const sc = hub.getAdapter('gitlab').sourceControl!;
+```
+
+### `listRepositories(tokens, opts?)`
+
+```typescript
+const { items, hasMore, cursor } = await sc.listRepositories(tokens, { limit: 50 });
+```
+
+Returns the same `Repository` shape as the GitHub adapter. For self-hosted instances, `cloneUrl` uses the configured `instanceUrl`.
+
+### `getRepository(tokens, repoId)`
+
+`repoId` must be the **project's numeric ID** (e.g. `"12345"`) or URL-encoded namespace path (e.g. `"group%2Fproject"`).
+
+```typescript
+const repo = await sc.getRepository(tokens, '12345');
+```
+
+### `listBranches(tokens, repoId, opts?)`
+
+```typescript
+const { items } = await sc.listBranches(tokens, '12345', { limit: 20 });
+// items[0]: { id, name, sha, isDefault, isProtected, url }
+```
+
+### `getPullRequest(tokens, repoId, mrNumber)`
+
+For GitLab, "pull requests" are **merge requests**. The `prNumber` is the MR IID (internal project ID).
+
+```typescript
+const mr = await sc.getPullRequest(tokens, '12345', 7);
+// mr.state: 'open' | 'closed' | 'merged'
+```
+
+### `createCommitStatus(tokens, repoId, sha, status)`
+
+Posts a **commit status** (pipeline status) to a commit on a specific project.
+
+```typescript
+await sc.createCommitStatus(tokens, '12345', 'a3b4c5...', {
+  state: 'success',
+  context: 'ci/build',
+  description: 'Build passed',
+  targetUrl: 'https://ci.example.com/jobs/99',
+});
+```
+
+### `listCommits(tokens, repoId, opts?)`
+
+```typescript
+const { items } = await sc.listCommits(tokens, '12345', {
+  branch: 'main',
+  since: new Date('2024-01-01'),
+  limit: 100,
+});
+```
+
+---
+
+## Issue Tracking capability
+
+```typescript
+const it = hub.getAdapter('gitlab').issueTracking!;
+```
+
+### `listIssues(tokens, filters?)`
+
+```typescript
+const { items } = await it.listIssues(tokens, {
+  projectId: '12345',
+  limit: 50,
+});
+// items[0]: { id, key, title, description, status, priority, assignee, labels, url }
+```
+
+### `getIssue(tokens, issueId)`
+
+```typescript
+const issue = await it.getIssue(tokens, '12345:42'); // projectId:issueIid
+```
+
+### `createIssue(tokens, input)`
+
+```typescript
+const issue = await it.createIssue(tokens, {
+  projectId: '12345',
+  title: 'Bug: login page crashes on Safari',
+  description: 'Steps to reproduce...',
+});
+```
+
+### `updateIssue(tokens, issueId, input)`
+
+```typescript
+const updated = await it.updateIssue(tokens, '12345:42', {
+  title: 'Updated title',
+  status: 'closed',
+});
+```
+
+### `addComment(tokens, issueId, body)`
+
+```typescript
+const comment = await it.addComment(tokens, '12345:42', 'Closing as fixed in v2.1.0');
+// { id, body, author: { id, name }, createdAt }
+```
+
+### `listProjects(tokens)`
+
+Returns all accessible GitLab groups/projects as normalized projects.
+
+```typescript
+const projects = await it.listProjects(tokens);
+// [{ id, key, name }]
+```
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `7200` | Access tokens expire after 2 hours |
+| `refreshable` | `true` | Standard `refresh_token` grant |
+| `rotatesRefreshToken` | `false` | Same refresh token reused across refreshes |
+| `requiresRefreshLock` | `false` | Parallel refreshes are safe |
+
+---
+
+## Error handling
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| Expired access token | `TokenRefreshError` | Yes |
+| Invalid webhook secret | `WebhookError` (401) | No |
+| Project not found (404) | `CapabilityError` | No |
+| Rate limited (429) | `CapabilityError` | Yes |
+| Insufficient scope | `OAuthError` | No (re-auth needed) |
+
+---
+
+## Common gotchas
+
+**Self-hosted TLS:** If your instance uses a private CA, Node.js will reject TLS connections. Set `NODE_EXTRA_CA_CERTS` to your CA bundle path, or add the certificate to the system trust store.
+
+**Project IDs vs. paths:** GitLab API accepts both numeric project IDs and URL-encoded paths. Prefer numeric IDs for stability — paths change when projects are renamed or moved.
+
+**Webhook token length:** GitLab enforces a maximum of 255 characters for the webhook secret token.
+
+**Scope `offline_access`:** Required to receive a refresh token. If you don't include it, GitLab issues a short-lived access token only — users will need to re-authorize every 2 hours.

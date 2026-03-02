@@ -1,0 +1,379 @@
+---
+title: Slack
+description: Slack Bot adapter — messaging capability using the Slack Web API, Events API, and Block Kit.
+---
+
+## Overview
+
+The Slack adapter integrates your application with Slack workspaces using the **Slack Web API** and **Events API**. It supports OAuth 2.0 for workspace installation, HMAC-SHA256 signature verification with an anti-replay timestamp window, and automatic handling of the `url_verification` challenge.
+
+**Capability:** [`messaging`](/docs/capabilities/messaging)
+
+**Auth model:** OAuth 2.0 with bot tokens (non-expiring unless rotation is enabled)
+
+**Token lifetime:** No expiry by default (`null`)
+
+---
+
+## Prerequisites
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**
+2. Under **OAuth & Permissions**, add a **Redirect URL** (e.g. `https://yourapp.com/oauth/callback/slack`)
+3. Add **Bot Token Scopes** for the features you need (see table below)
+4. Under **Event Subscriptions**, enable events and set your request URL (e.g. `https://yourapp.com/webhooks/slack`)
+5. Subscribe to the **Bot Events** you want
+6. Under **Basic Information**, find your **Client ID**, **Client Secret**, and **Signing Secret**
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-slack
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createSlackAdapter } from '@apollo-deploy/adapter-slack';
+
+const slack = createSlackAdapter({
+  clientId: process.env.SLACK_CLIENT_ID!,
+  clientSecret: process.env.SLACK_CLIENT_SECRET!,
+  signingSecret: process.env.SLACK_SIGNING_SECRET!,
+  // Optional: default scopes to request
+  scopes: ['channels:read', 'chat:write', 'channels:history'],
+  userScopes: ['identity.basic'],
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | `string` | ✅ | Slack app Client ID |
+| `clientSecret` | `string` | ✅ | Slack app Client Secret |
+| `signingSecret` | `string` | ✅ | Signing secret for `X-Slack-Signature` HMAC verification |
+| `scopes` | `string[]?` | — | Default **bot token scopes** to request during OAuth |
+| `userScopes` | `string[]?` | — | Default **user token scopes** to request during OAuth |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+SLACK_CLIENT_ID=123456.789012345678
+SLACK_CLIENT_SECRET=abc123def456ghi789
+SLACK_SIGNING_SECRET=abcd1234efgh5678ijkl9012
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createSlackAdapter } from '@apollo-deploy/adapter-slack';
+
+const hub = new IntegrationHub();
+
+hub.register('slack', createSlackAdapter({
+  clientId: process.env.SLACK_CLIENT_ID!,
+  clientSecret: process.env.SLACK_CLIENT_SECRET!,
+  signingSecret: process.env.SLACK_SIGNING_SECRET!,
+}));
+
+await hub.initialize();
+
+hub.onEvent('slack', (event) => {
+  if (event.eventType === 'message.created') {
+    const msg = (event.data as any).event;
+    console.log(`New message in <#${msg.channel}>: ${msg.text}`);
+  }
+});
+```
+
+---
+
+## OAuth flow
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/slack-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('slack');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(), // Store in session
+  scopes: [
+    'channels:read',
+    'chat:write',
+    'channels:history',
+    'users:read',
+  ],
+  redirectUri: 'https://yourapp.com/oauth/callback/slack',
+});
+// Redirect user to the returned URL
+```
+
+### Recommended bot token scopes
+
+| Scope | Description |
+|-------|-------------|
+| `channels:read` | View basic information about public channels |
+| `channels:history` | View messages in public channels |
+| `chat:write` | Send messages as the bot |
+| `chat:write.customize` | Send messages with custom username/avatar |
+| `groups:read` | View private channels the bot is in |
+| `groups:history` | View messages in private channels |
+| `im:read` | View direct message channel info |
+| `im:write` | Start direct message conversations |
+| `users:read` | View user profiles |
+| `reactions:read` | View emoji reactions |
+| `reactions:write` | Add emoji reactions |
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/slack/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/slack',
+});
+
+// tokens.accessToken           — bot token (xoxb-...)
+// tokens.expiresAt             — null (no expiry)
+// tokens.scope                 — comma-separated granted bot scopes
+// tokens.providerData          — see below
+```
+
+### `tokens.providerData` reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `teamId` | `string` | Slack workspace (team) ID — store this as the workspace identifier |
+| `teamName` | `string` | Human-readable workspace name |
+| `botUserId` | `string` | Bot's user ID in the workspace (for filtering self-mentions) |
+
+<Callout type="info">
+Slack bot tokens **never expire** unless you explicitly enable token rotation in your app settings. `refreshable` is `false` and `expiresInSeconds` is `null`.
+</Callout>
+
+### Step 3 — Get identity
+
+```typescript
+const identity = await adapter.oauth.getIdentity(tokens.accessToken);
+// identity.providerAccountId — workspace team ID
+// identity.displayName       — workspace name
+// identity.metadata.teamId   — same as providerData.teamId
+```
+
+---
+
+## Webhook events (Events API)
+
+Slack sends `POST` requests to your endpoint for each subscribed event. The payload is wrapped in an outer `event_callback` envelope.
+
+### Signature verification
+
+The adapter verifies `X-Slack-Signature: v0=<hmac>` using:
+
+$$\text{sig} = \text{HMAC-SHA256}(\text{signingSecret},\ \text{"v0:"} + \text{timestamp} + \text{":"} + \text{rawBody})$$
+
+It also enforces a **5-minute anti-replay window** by checking `X-Slack-Request-Timestamp` — requests older than 5 minutes are rejected automatically.
+
+### URL verification challenge
+
+When you first save your Events API URL, Slack sends a `url_verification` challenge. The adapter handles this **synchronously and inline** — no special code needed:
+
+```typescript title="app/webhooks/slack/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.slack({ rawBody, headers });
+
+  // For url_verification, result.body = { challenge: "..." }
+  // For normal events, result is { statusCode: 200 }
+  return Response.json(result.body ?? { ok: true }, {
+    status: result.statusCode ?? 200,
+  });
+}
+```
+
+### Supported events
+
+| Slack event type | Sub-type | Normalized `eventType` |
+|---|---|---|
+| `message` | — | `message` |
+| `message` | `message_changed` | `message` |
+| `app_mention` | — | `app_mention` |
+| `reaction_added` | — | `reaction_added` |
+| `reaction_removed` | — | `reaction_removed` |
+| `channel_created` | — | `channel_created` |
+| `channel_deleted` | — | `channel_deleted` |
+| `member_joined_channel` | — | `member_joined_channel` |
+| `member_left_channel` | — | `member_left_channel` |
+| `url_verification` | — | handled synchronously |
+
+### Delivery ID
+
+Slack has no canonical delivery ID header. The adapter computes a composite:
+`slack:{X-Slack-Request-Timestamp}:{event_id|event_ts}`
+
+---
+
+## Messaging capability
+
+```typescript
+const msg = hub.getAdapter('slack').messaging!;
+```
+
+### `listChannels(tokens, opts?)`
+
+Returns all non-archived public channels (and private channels the bot is a member of).
+
+```typescript
+const { items, cursor } = await msg.listChannels(tokens, { limit: 200 });
+// items[0]: { id, name, isPrivate }
+
+// Paginate
+const next = await msg.listChannels(tokens, { cursor: cursor!, limit: 200 });
+```
+
+**`opts` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `limit` | `number?` | Max channels per page (default: 200) |
+| `cursor` | `string?` | Cursor from previous response |
+
+**Returns `Channel[]`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Slack channel ID (e.g. `C0123456789`) |
+| `name` | `string` | Channel name without `#` prefix |
+| `isPrivate` | `boolean` | Private (group) channel |
+
+---
+
+### `sendMessage(tokens, channelId, message)`
+
+Send a plain text message to a channel or DM.
+
+```typescript
+const result = await msg.sendMessage(tokens, 'C0123456789', {
+  text: 'Hello from Apollo Deploy! :rocket:',
+  threadId: '1620000000.123456', // Optional: reply in thread
+});
+
+// result.messageId  — message timestamp (ts)
+// result.channelId  — channel ID
+// result.timestamp  — same as messageId
+```
+
+---
+
+### `updateMessage(tokens, channelId, messageId, message)`
+
+Edit an existing message. `messageId` is the message timestamp (ts).
+
+```typescript
+await msg.updateMessage(tokens, 'C0123456789', '1620000000.123456', {
+  text: 'Updated: deployment succeeded ✅',
+});
+```
+
+---
+
+### `sendRichMessage(tokens, channelId, blocks)`
+
+Send a message using Slack's **Block Kit** — allows rich formatting with dividers, images, interactive buttons, and fields.
+
+```typescript
+await msg.sendRichMessage(tokens, 'C0123456789', [
+  {
+    type: 'header',
+    text: { type: 'plain_text', text: '🚀 Deployment Complete', emoji: true },
+  },
+  {
+    type: 'section',
+    fields: [
+      { type: 'mrkdwn', text: '*App:*\nmy-api' },
+      { type: 'mrkdwn', text: '*Environment:*\nproduction' },
+      { type: 'mrkdwn', text: '*Version:*\nv2.4.1' },
+      { type: 'mrkdwn', text: '*Status:*\n✅ Success' },
+    ],
+  },
+  { type: 'divider' },
+  {
+    type: 'actions',
+    elements: [
+      {
+        type: 'button',
+        text: { type: 'plain_text', text: 'View Logs' },
+        url: 'https://yourapp.com/deployments/123/logs',
+        style: 'primary',
+      },
+    ],
+  },
+]);
+```
+
+<Callout type="info">
+Use [Slack's Block Kit Builder](https://app.slack.com/block-kit-builder) to visually design and preview Block Kit layouts before coding them.
+</Callout>
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `null` | Bot tokens have no expiry unless rotation is enabled |
+| `refreshable` | `false` | No refresh mechanism for bot tokens |
+| `rotatesRefreshToken` | `false` | N/A |
+| `requiresRefreshLock` | `false` | N/A |
+
+---
+
+## Error handling
+
+The adapter wraps Slack Web API errors as `CapabilityError`. The `retryable` flag is `true` for rate limit errors.
+
+| Scenario | Error class | `retryable` |
+|----------|-------------|-------------|
+| `rate_limited` | `CapabilityError` | `true` |
+| `channel_not_found` | `CapabilityError` | `false` |
+| `not_in_channel` | `CapabilityError` | `false` |
+| `invalid_auth` | `CapabilityError` | `false` |
+| Webhook signature mismatch | `WebhookError` (401) | `false` |
+| Anti-replay (stale timestamp) | `WebhookError` (400) | `false` |
+
+```typescript
+import { CapabilityError } from '@apollo-deploy/integrations';
+
+try {
+  await msg.sendMessage(tokens, channelId, { text: 'Hello!' });
+} catch (err) {
+  if (err instanceof CapabilityError && err.retryable) {
+    // Slack rate limit — wait 1 minute (X-RateLimit-Reset header)
+    await sleep(60_000);
+  }
+}
+```
+
+---
+
+## Common gotchas
+
+**Bot must be invited to channels:** The bot can only send messages to channels it has been added to. Call `/invite @YourBot` in Slack or use `conversations.join` via the API.
+
+**Event subscriptions vs. Bolt:** The adapter uses the raw Slack Events API — you don't need `@slack/bolt`. However, the URL must be publicly reachable during development. Use [ngrok](https://ngrok.com) or Slack's `socket_mode` for local testing.
+
+**Token rotation:** If you enable token rotation in app settings, tokens expire every 12 hours and require a refresh flow. Set `refreshable: true` in your token metadata and handle `refreshToken` accordingly.
+
+**`chat.postMessage` vs. `chat.postEphemeral`:** The adapter's `sendMessage` uses `chat.postMessage` (visible to everyone). Use the Slack Web API directly for ephemeral messages visible only to one user.

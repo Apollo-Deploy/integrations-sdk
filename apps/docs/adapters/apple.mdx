@@ -1,0 +1,557 @@
+---
+title: Apple App Store Connect
+description: Apple App Store Connect adapter — app store capability using JWT-based authentication with full build, release, review, and TestFlight management.
+---
+
+## Overview
+
+The Apple App Store Connect adapter provides comprehensive access to the **App Store Connect API** for iOS, macOS, tvOS, and watchOS apps. It authenticates using a **short-lived JWT** signed with your private key (ES256) — no OAuth flow, no user authorization. Access is granted via API keys created in App Store Connect.
+
+**Capability:** [`app-store`](/docs/capabilities/app-store)
+
+**Auth model:** JWT (API key-based) — no user OAuth
+
+**Token lifetime:** 20 minutes maximum per JWT (fresh token generated per request)
+
+---
+
+## Prerequisites
+
+1. Go to [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → **Users and Access → Keys**
+2. Click **"+"** to generate a new API key
+3. Choose a **Role** (Admin for full access, or a more restricted role)
+4. Download the **`.p8` private key** file — you can only download it **once**
+5. Note the **Key ID** and **Issuer ID** from the keys page
+6. For the vendor number (financial reports): go to **Payments and Financial Reports → your vendor number**
+7. For App Store Server Notifications: set your URL in your app's **App Store → App Information → App Store Server Notifications**
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-apple
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createAppleAdapter } from '@apollo-deploy/adapter-apple';
+
+const apple = createAppleAdapter({
+  issuerId: process.env.APPLE_ISSUER_ID!,
+  keyId: process.env.APPLE_KEY_ID!,
+  privateKey: process.env.APPLE_PRIVATE_KEY!,
+  vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
+  webhookSecret: process.env.APPLE_WEBHOOK_SECRET,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `issuerId` | `string` | ✅ | Issuer ID — UUID from App Store Connect → Users and Access → Keys |
+| `keyId` | `string` | ✅ | Key ID — 10-character string shown next to your API key |
+| `privateKey` | `string` | ✅ | Full contents of the `.p8` file including PEM headers |
+| `vendorNumber` | `string` | ✅ | Vendor number for financial/sales reports |
+| `webhookSecret` | `string?` | — | Shared secret (password) configured in App Store Server Notifications |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+APPLE_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+APPLE_KEY_ID=ABCDE12345
+APPLE_VENDOR_NUMBER=12345678
+# Full .p8 content with literal \n newlines
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIGH...\n-----END PRIVATE KEY-----"
+# Optional: for App Store Server Notifications
+APPLE_WEBHOOK_SECRET=SharedSecretYouSetInASC
+```
+
+<Callout type="warn">
+The `.p8` private key can only be downloaded once from App Store Connect. If lost, you must revoke the key and create a new one (invalidating any existing API connections).
+</Callout>
+
+**Loading the key from a file:**
+
+```typescript
+import { readFileSync } from 'node:fs';
+
+const apple = createAppleAdapter({
+  issuerId: process.env.APPLE_ISSUER_ID!,
+  keyId: process.env.APPLE_KEY_ID!,
+  privateKey: readFileSync('./keys/AuthKey_ABCDE12345.p8', 'utf8'),
+  vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
+});
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createAppleAdapter } from '@apollo-deploy/adapter-apple';
+
+const hub = new IntegrationHub();
+
+hub.register('apple', createAppleAdapter({
+  issuerId: process.env.APPLE_ISSUER_ID!,
+  keyId: process.env.APPLE_KEY_ID!,
+  privateKey: process.env.APPLE_PRIVATE_KEY!,
+  vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
+}));
+
+await hub.initialize();
+
+hub.onEvent('apple', (event) => {
+  console.log('Apple event:', event.eventType, event.data);
+});
+```
+
+---
+
+## Authentication
+
+App Store Connect uses **JSON Web Tokens (JWT)** signed with ES256 (ECDSA + SHA-256). A new JWT is generated automatically when an existing token is within 60 seconds of expiry.
+
+**JWT claims:**
+
+| Claim | Value |
+|-------|-------|
+| `iss` | `issuerId` |
+| `iat` | Current Unix timestamp |
+| `exp` | `iat + 1200` (20 minutes max) |
+| `aud` | `appstoreconnect-v1` |
+
+The JWT is sent as `Authorization: Bearer <jwt>` on every request.
+
+<Callout type="info">
+There is no OAuth flow for Apple App Store Connect. The `oauth` handler exists for interface compatibility but generates a JWT from your private key rather than redirecting a user. You call `adapter.oauth.exchangeCode({ code: '' })` to get an initial `TokenSet` — store this and use it for all API calls.
+</Callout>
+
+---
+
+## App Store Server Notifications
+
+Apple sends server-to-server notifications for in-app purchase events. These are payload-level `signedPayload` JWTs verified against Apple's root certificates.
+
+```typescript title="app/webhooks/apple/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.apple({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported notification types
+
+| Notification `notificationType` | Normalized `eventType` | Description |
+|---|---|---|
+| `DID_RENEW` | `subscription.renewed` | Subscription successfully renewed |
+| `SUBSCRIBED` | `subscription.started` | New subscription |
+| `DID_CHANGE_RENEWAL_STATUS` | `subscription.renewal_status_changed` | Auto-renewal toggled |
+| `DID_FAIL_TO_RENEW` | `subscription.renewal_failed` | Billing failure |
+| `EXPIRED` | `subscription.expired` | Subscription fully expired |
+| `REFUND` | `subscription.refunded` | Purchase refunded |
+| `CONSUMPTION_REQUEST` | `subscription.consumption_request` | Consumable refund prompt |
+| `REVOKE` | `entitlement.revoked` | Family Sharing revocation |
+
+---
+
+## App Store capability
+
+```typescript
+const store = hub.getAdapter('apple').appStore!;
+```
+
+### App management
+
+#### `listApps(tokens)`
+
+List all apps in your App Store Connect account.
+
+```typescript
+const { items } = await store.listApps(tokens);
+// items[0]:
+// { id, name, bundleId, platform, primaryLocale, createdAt }
+```
+
+#### `getApp(tokens, appId)`
+
+Fetch a single app by its App Store Connect ID.
+
+```typescript
+const app = await store.getApp(tokens, '1234567890');
+```
+
+---
+
+### Build management
+
+#### `listBuilds(tokens, appId, opts?)`
+
+List processed builds for an app.
+
+```typescript
+const { items } = await store.listBuilds(tokens, '1234567890', {
+  limit: 20,
+  status: 'valid',    // 'processing' | 'failed' | 'invalid' | 'valid'
+  version: '2.4.1',  // Filter by version string
+});
+
+// items[0]:
+// {
+//   id: 'build-uuid',
+//   appId: '1234567890',
+//   version: '2.4.1',
+//   buildNumber: '42',
+//   status: 'valid',
+//   uploadedAt: Date,
+//   platform: 'IOS',
+// }
+```
+
+#### `getBuild(tokens, appId, buildId)`
+
+```typescript
+const build = await store.getBuild(tokens, '1234567890', 'build-uuid');
+```
+
+#### `listBuildArtifacts(tokens, appId, buildId)`
+
+List dSYM files and other artifacts associated with a build (via BuildBundles).
+
+```typescript
+const artifacts = await store.listBuildArtifacts(tokens, '1234567890', 'build-uuid');
+// [{ id, buildId, type: 'dsym', name, size, downloadUrl? }]
+```
+
+#### `getArtifactDownloadUrl(tokens, appId, buildId, artifactId)`
+
+Get a short-lived (10 minutes) download URL for an artifact.
+
+```typescript
+const { url, expiresAt } = await store.getArtifactDownloadUrl(
+  tokens, '1234567890', 'build-uuid', 'artifact-id'
+);
+```
+
+---
+
+### Release management
+
+#### `listReleases(tokens, appId, opts?)`
+
+List App Store versions.
+
+```typescript
+const { items } = await store.listReleases(tokens, '1234567890', {
+  limit: 10,
+  status: 'ready_for_review',  // Filter by App Store state
+});
+
+// items[0]:
+// {
+//   id: 'version-uuid',
+//   appId: '1234567890',
+//   version: '2.4.0',
+//   status: 'ready_for_review',
+//   releaseNotes: [...],
+//   createdAt: Date,
+// }
+```
+
+**Release status values:**
+
+| Status | Description |
+|--------|-------------|
+| `draft` | Version created but not submitted |
+| `prepare_for_submission` | Completing submission requirements |
+| `waiting_for_review` | Submitted and queued for review |
+| `in_review` | Currently being reviewed |
+| `pending_developer_release` | Approved and awaiting release |
+| `ready_for_sale` | Live in the App Store |
+| `removed_from_sale` | Removed by developer |
+
+#### `getRelease(tokens, appId, releaseId)`
+
+```typescript
+const release = await store.getRelease(tokens, '1234567890', 'version-uuid');
+```
+
+---
+
+### Track and version management
+
+#### `listTracks(tokens, appId)`
+
+Returns the two App Store tracks: `app_store` (production) and `testflight` (beta).
+
+```typescript
+const tracks = await store.listTracks(tokens, '1234567890');
+// [
+//   { id: 'app_store', name: 'App Store', type: 'production', releases: [...] },
+//   { id: 'testflight', name: 'TestFlight', type: 'beta', releases: [...] }
+// ]
+```
+
+#### `updateTrack(tokens, appId, trackId, update)`
+
+Control phased releases on the App Store track.
+
+```typescript
+// Complete a phased rollout (release to 100%)
+await store.updateTrack(tokens, '1234567890', 'app_store', {
+  completeRollout: true
+});
+
+// Pause a phased rollout
+await store.updateTrack(tokens, '1234567890', 'app_store', {
+  halt: true
+});
+
+// Resume a paused rollout
+await store.updateTrack(tokens, '1234567890', 'app_store', {
+  resume: true
+});
+```
+
+---
+
+### Publishing
+
+#### `submitForReview(tokens, appId, request)`
+
+Submit an App Store version for review.
+
+```typescript
+const result = await store.submitForReview(tokens, '1234567890', {
+  versionId: 'version-uuid',
+  phasedRelease: true,  // Enable phased release after approval
+});
+
+// result:
+// {
+//   success: true,
+//   status: 'in_review',
+//   message: 'Submitted for App Review',
+//   releaseId: 'version-uuid'
+// }
+```
+
+#### `releaseToTrack(tokens, appId, request)`
+
+Release an approved build that is in `pending_developer_release` state.
+
+```typescript
+const result = await store.releaseToTrack(tokens, '1234567890', {
+  buildId: 'version-uuid',
+  track: 'app_store',
+});
+```
+
+#### `updateRollout(tokens, appId, releaseId, update)`
+
+Control phased release rollout on an individual version.
+
+```typescript
+// Complete rollout (100% of users)
+await store.updateRollout(tokens, '1234567890', 'version-uuid', {
+  completeRollout: true
+});
+
+// Pause rollout
+await store.updateRollout(tokens, '1234567890', 'version-uuid', { pause: true });
+
+// Resume paused rollout
+await store.updateRollout(tokens, '1234567890', 'version-uuid', { resume: true });
+```
+
+#### `haltRelease(tokens, appId, releaseId, reason?)`
+
+Emergency halt — pauses the phased rollout immediately.
+
+```typescript
+await store.haltRelease(tokens, '1234567890', 'version-uuid', 'Critical crash detected');
+```
+
+---
+
+### Reviews and ratings
+
+#### `listReviews(tokens, appId, opts?)`
+
+Fetch customer reviews from the App Store.
+
+```typescript
+const { items, cursor } = await store.listReviews(tokens, '1234567890', {
+  limit: 20,
+  sortBy: 'date',         // 'date' | 'rating'
+  sortOrder: 'desc',
+  territory: 'USA',       // Optional: filter by storefront
+  rating: 1,             // Optional: filter by star rating (1-5)
+});
+
+// items[0]:
+// {
+//   id, title, body,
+//   rating: 2,
+//   author: 'JohnD',
+//   territory: 'USA',
+//   createdAt: Date
+// }
+```
+
+#### `getRatingSummary(tokens, appId, opts?)`
+
+Get aggregate rating data.
+
+```typescript
+const summary = await store.getRatingSummary(tokens, '1234567890');
+// {
+//   average: 4.6,
+//   totalCount: 12453,
+//   distribution: { 1: 123, 2: 89, 3: 234, 4: 1205, 5: 10802 }
+// }
+```
+
+#### `replyToReview(tokens, appId, reviewId, body)`
+
+Post a developer response to a customer review.
+
+```typescript
+await store.replyToReview(
+  tokens,
+  '1234567890',
+  'review-uuid',
+  "Thank you for your feedback! We've addressed this in the latest update."
+);
+```
+
+---
+
+### TestFlight (Beta testing)
+
+#### `listBetaGroups(tokens, appId)`
+
+List all TestFlight beta groups.
+
+```typescript
+const groups = await store.listBetaGroups(tokens, '1234567890');
+// [{ id, appId, name, isInternal, feedbackEnabled, testerCount }]
+```
+
+#### `getBetaGroup(tokens, appId, groupId)`
+
+```typescript
+const group = await store.getBetaGroup(tokens, '1234567890', 'group-uuid');
+```
+
+#### `createBetaGroup(tokens, appId, input)`
+
+```typescript
+const group = await store.createBetaGroup(tokens, '1234567890', {
+  name: 'QA Team',
+  isInternal: true,
+  feedbackEnabled: true,
+});
+```
+
+#### `listBetaTesters(tokens, appId, groupId?, opts?)`
+
+```typescript
+const { items } = await store.listBetaTesters(tokens, '1234567890', 'group-uuid');
+// [{ id, email, firstName, lastName, status }]
+```
+
+#### `addBetaTesters(tokens, appId, groupId, testers)`
+
+```typescript
+await store.addBetaTesters(tokens, '1234567890', 'group-uuid', [
+  { email: 'qa@yourcompany.com', firstName: 'QA', lastName: 'Tester' },
+]);
+```
+
+#### `removeBetaTesters(tokens, appId, groupId, testerIds)`
+
+```typescript
+await store.removeBetaTesters(tokens, '1234567890', 'group-uuid', ['tester-id']);
+```
+
+---
+
+### App Vitals
+
+#### `getVitalsSummary(tokens, appId, opts?)`
+
+Get performance metrics from App Store Connect Metrics.
+
+```typescript
+const vitals = await store.getVitalsSummary(tokens, '1234567890', {
+  version: '2.4.0',
+  deviceType: 'iPhone',
+});
+// {
+//   metrics: [
+//     { type: 'crash_rate', value: 0.012, unit: '%', delta: -0.003 },
+//     { type: 'launch_time', value: 320, unit: 'ms', ... }
+//   ]
+// }
+```
+
+#### `listCrashClusters(tokens, appId, opts?)`
+
+```typescript
+const { items } = await store.listCrashClusters(tokens, '1234567890', {
+  version: '2.4.0',
+  limit: 10,
+});
+// [{ id, signature, count, impactedDevices, latestOsVersion, ... }]
+```
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `1200` | JWTs expire after 20 minutes |
+| `refreshable` | `false` | JWT is regenerated from the private key, not refreshed |
+| `rotatesRefreshToken` | `false` | N/A |
+| `requiresRefreshLock` | `false` | JWT generation is idempotent |
+
+---
+
+## Error handling
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| API error 4xx (non-rate-limit) | `CapabilityError` | No |
+| Rate limited (429) | `CapabilityError` | Yes |
+| Private key signing failure | `OAuthError` | No (check key format) |
+| Phased release not found | `CapabilityError` | No |
+| dSYMs not yet available | Silently skipped | N/A |
+
+---
+
+## Common gotchas
+
+**App Store Connect API keys have roles:** Choose the appropriate role. `Customer Support` can respond to reviews. `Developer` can manage builds and testing. `Admin` has full access.
+
+**Phased release requires a prior setup:** You can only control a phased release if `appStoreVersionPhasedRelease` was set up during the initial version creation. If it doesn't exist, `updateRollout` / `updateTrack` will throw a `CapabilityError`.
+
+**JWT expiry limit:** Apple enforces a maximum JWT lifetime of **20 minutes** (`exp - iat ≤ 1200`). The adapter generates fresh JWTs with this maximum.
+
+**`listApps` limitation:** The Apps endpoint returns all apps associated with your API key's team. If your key is scoped to a specific app, `listApps` may return only that app.
+
+**Reviews are per-territory:** `listReviews` returns reviews from all territories by default. Use the `territory` parameter to filter to a specific App Store storefront (e.g. `'GBR'`, `'USA'`, `'JPN'`).

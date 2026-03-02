@@ -1,0 +1,308 @@
+---
+title: Linear
+description: Linear OAuth adapter — issue tracking with 24-hour access tokens, no refresh support.
+---
+
+## Overview
+
+The Linear adapter integrates with [Linear](https://linear.app) — the high-performance project management tool. It supports OAuth 2.0 with HMAC-SHA256 webhook verification and provides full issue tracking capabilities via the Linear REST API.
+
+**Capability:** [`issue-tracking`](/docs/capabilities/issue-tracking)
+
+**Auth model:** OAuth 2.0 with short-lived access tokens (no refresh)
+
+**Token lifetime:** 24 hours — no refresh token issued
+
+<Callout type="info">
+Linear does **not** issue refresh tokens. When a token expires after 24 hours, the user must re-authorize by going through the OAuth flow again. Plan your UX accordingly (e.g. re-auth banner before token expiry).
+</Callout>
+
+---
+
+## Prerequisites
+
+1. Go to [linear.app](https://linear.app) → **Settings → API → OAuth Applications → Create new application**
+2. Fill in **Application name**, **Description**, and **Redirect URI** (e.g. `https://yourapp.com/oauth/callback/linear`)
+3. Copy the **Client ID** and **Client Secret**
+4. For webhooks: in Linear → **Settings → API → Webhooks → New Webhook**, add your endpoint URL and set a **Signing secret**
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-linear
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createLinearAdapter } from '@apollo-deploy/adapter-linear';
+
+const linear = createLinearAdapter({
+  clientId: process.env.LINEAR_CLIENT_ID!,
+  clientSecret: process.env.LINEAR_CLIENT_SECRET!,
+  webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | `string` | ✅ | Linear OAuth Application Client ID |
+| `clientSecret` | `string` | ✅ | Linear OAuth Application Client Secret |
+| `webhookSecret` | `string` | ✅ | Signing secret from Linear webhook settings — used to verify `linear-signature` |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+LINEAR_CLIENT_ID=abc123def456ghi789
+LINEAR_CLIENT_SECRET=lin_api_your_secret_here
+LINEAR_WEBHOOK_SECRET=whsec_your_secret_at_least_32_chars
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createLinearAdapter } from '@apollo-deploy/adapter-linear';
+
+const hub = new IntegrationHub();
+
+hub.register('linear', createLinearAdapter({
+  clientId: process.env.LINEAR_CLIENT_ID!,
+  clientSecret: process.env.LINEAR_CLIENT_SECRET!,
+  webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
+}));
+
+await hub.initialize();
+
+hub.onEvent('linear', (event) => {
+  if (event.eventType === 'issue.create') {
+    const data = event.data as any;
+    console.log('New Linear issue:', data.data?.title);
+  }
+});
+```
+
+---
+
+## OAuth flow
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/linear-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('linear');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(), // Store in session for CSRF protection
+  scopes: ['read', 'write', 'issues:create'],
+  redirectUri: 'https://yourapp.com/oauth/callback/linear',
+});
+```
+
+### Available scopes
+
+| Scope | Description |
+|-------|-------------|
+| `read` | Read access to all resources (issues, teams, projects, cycles) |
+| `write` | Write access to all resources |
+| `issues:create` | Create new issues |
+| `comments:create` | Add comments to issues |
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/linear/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/linear',
+});
+
+// tokens.accessToken           — short-lived token (24h)
+// tokens.refreshToken          — undefined (Linear does not issue refresh tokens)
+// tokens.expiresAt             — 24 hours from now
+// tokens.providerData          — see below
+```
+
+### `tokens.providerData` reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `organizationId` | `string` | Linear organization ID |
+| `organizationName` | `string` | Human-readable organization name |
+
+### Token expiry handling
+
+Since there is no refresh token, you must detect expiry and prompt re-authorization:
+
+```typescript title="lib/linear-token-check.ts" lineNumbers
+function isTokenExpired(tokens: TokenSet): boolean {
+  if (!tokens.expiresAt) return false;
+  // Treat as expired if within 5 minutes of expiry
+  return tokens.expiresAt.getTime() - Date.now() < 5 * 60 * 1000;
+}
+
+if (isTokenExpired(storedTokens)) {
+  // Redirect user to re-authorize
+  const url = adapter.oauth.getAuthorizationUrl({ state, scopes, redirectUri });
+  return redirect(url);
+}
+```
+
+---
+
+## Webhook events
+
+Linear sends `linear-signature: <hmac>` (HMAC-SHA256 of the raw body with your webhook secret) and `linear-delivery: <uuid>` headers.
+
+### Setting up webhooks in Linear
+
+1. **Settings → API → Webhooks → New Webhook**
+2. URL: `https://yourapp.com/webhooks/linear`
+3. Set **Signing secret** (copy to `LINEAR_WEBHOOK_SECRET`)
+4. Select resources to watch (Issues, Comments, Cycles, etc.)
+
+```typescript title="app/webhooks/linear/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.linear({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported events
+
+Linear delivers events with a `type` and `action` in the body. The adapter normalizes them as `{type.toLowerCase()}.{action}`:
+
+| Linear `type` + `action` | Normalized `eventType` | Domain |
+|---|---|---|
+| `Issue.create` | `issue.create` | `issue-tracking` |
+| `Issue.update` | `issue.update` | `issue-tracking` |
+| `Issue.remove` | `issue.remove` | `issue-tracking` |
+| `Comment.create` | `comment.create` | `issue-tracking` |
+| `Comment.update` | `comment.update` | `issue-tracking` |
+| `Comment.remove` | `comment.remove` | `issue-tracking` |
+| `Project.update` | `project.update` | `issue-tracking` |
+| `ProjectUpdate.create` | `projectupdate.create` | `issue-tracking` |
+| `Cycle.update` | `cycle.update` | `issue-tracking` |
+| `Reaction.create` | `reaction.create` | `issue-tracking` |
+
+### Delivery ID
+
+The adapter uses `linear-delivery` as the delivery ID. Falls back to `linear:{timestamp}` if missing.
+
+---
+
+## Issue Tracking capability
+
+```typescript
+const it = hub.getAdapter('linear').issueTracking!;
+```
+
+### `listIssues(tokens, filters?)`
+
+```typescript
+const { items, hasMore } = await it.listIssues(tokens, {
+  projectId: 'team-id-or-key',  // Linear team ID or key
+  limit: 50,
+});
+
+// items[0]:
+// {
+//   id: 'abc123',
+//   key: 'ENG-123',
+//   title: 'Improve API response times',
+//   description: '...',
+//   status: 'In Progress',
+//   priority: 'High',
+//   assignee: { id: 'user123', name: 'Alice' },
+//   labels: ['performance'],
+// }
+```
+
+### `getIssue(tokens, issueId)`
+
+```typescript
+const issue = await it.getIssue(tokens, 'abc123-def456');
+// or by key (depends on implementation)
+```
+
+### `createIssue(tokens, input)`
+
+```typescript
+const issue = await it.createIssue(tokens, {
+  projectId: 'team-id',          // Linear team ID (required)
+  title: 'Add rate limiting to auth endpoints',
+  description: 'Current auth has no rate limiting...',
+});
+// issue.key — ENG-142
+```
+
+### `updateIssue(tokens, issueId, input)`
+
+```typescript
+const updated = await it.updateIssue(tokens, 'abc123', {
+  title: 'Updated title',
+  status: 'Done',
+});
+```
+
+### `addComment(tokens, issueId, body)`
+
+```typescript
+const comment = await it.addComment(tokens, 'abc123', 'Fixed in commit a1b2c3');
+```
+
+### `listProjects(tokens)`
+
+Returns Linear **teams** as normalized projects:
+
+```typescript
+const teams = await it.listProjects(tokens);
+// [{ id: 'team-id', key: 'ENG', name: 'Engineering' }]
+```
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `86400` | 24 hours |
+| `refreshable` | `false` | No refresh token issued |
+| `rotatesRefreshToken` | `false` | N/A |
+| `requiresRefreshLock` | `false` | N/A |
+
+---
+
+## Error handling
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| Expired token (24h) | `CapabilityError` | No — re-auth needed |
+| Invalid webhook signature | `WebhookError` (400) | No |
+| Resource not found | `CapabilityError` | No |
+| Rate limited (429) | `CapabilityError` | Yes |
+
+---
+
+## Common gotchas
+
+**No refresh token:** Plan your re-auth UX upfront. Consider storing `expiresAt` and proactively prompting re-authorization before the token expires, rather than waiting for an API error.
+
+**Linear team IDs vs. project IDs:** Linear uses "Teams" for grouping issues, not "Projects" (which are cross-team planning boards). The `projectId` in `listIssues` / `createIssue` refers to a **team ID**, not a Linear Project ID.
+
+**Webhook resource types:** Linear webhooks send events for specific resources. Ensure you've checked the relevant resource checkboxes when creating the webhook (Issues, Comments, Cycles, etc.).  Events for unchecked resources will not be delivered.
+
+**Issue key format:** Linear issue keys are `{TEAM_KEY}-{NUMBER}` (e.g. `ENG-123`). The API uses internal UUIDs for mutations but accepts issue identifiers in queries.

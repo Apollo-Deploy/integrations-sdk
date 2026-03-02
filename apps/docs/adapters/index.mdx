@@ -1,0 +1,141 @@
+---
+title: Adapters
+description: Feature matrix, token lifecycle comparison, and configuration reference for every built-in integration adapter.
+type: overview
+---
+
+Each adapter wraps a specific provider's API behind a common interface. Adapters handle OAuth, webhook signature verification, event normalization, and capability method implementations — all type-safe and uniformly structured.
+
+## Feature matrix
+
+| Adapter | Package | OAuth | Webhooks | Source Control | Messaging | Issue Tracking | App Store |
+|---------|---------|:-----:|:--------:|:-:|:-:|:-:|:-:|
+| [GitHub](/docs/adapters/github) | `@apollo-deploy/adapter-github` | ✓ | ✓ | ✓ | | | |
+| [GitLab](/docs/adapters/gitlab) | `@apollo-deploy/adapter-gitlab` | ✓ | ✓ | ✓ | | ✓ | |
+| [Slack](/docs/adapters/slack) | `@apollo-deploy/adapter-slack` | ✓ | ✓ | | ✓ | | |
+| [Discord](/docs/adapters/discord) | `@apollo-deploy/adapter-discord` | ✓ | ✓ | | ✓ | | |
+| [Jira](/docs/adapters/jira) | `@apollo-deploy/adapter-jira` | ✓ | ✓ | | | ✓ | |
+| [Linear](/docs/adapters/linear) | `@apollo-deploy/adapter-linear` | ✓ | ✓ | | | ✓ | |
+| [Apple App Store Connect](/docs/adapters/apple) | `@apollo-deploy/adapter-apple` | ✓ (JWT) | ✓ | | | | ✓ |
+| [Google Play Console](/docs/adapters/google-play) | `@apollo-deploy/adapter-google-play` | ✓ | ✓ | | | | ✓ |
+
+---
+
+## Token lifecycle comparison
+
+| Adapter | Expiry | Refreshable | Rotates Refresh Token | Needs Lock |
+|---------|--------|:-----------:|:--------------------:|:----------:|
+| GitHub | 1 hour | ✓ (JWT re-sign) | ✗ | ✗ |
+| GitLab | 2 hours | ✓ | ✗ | ✗ |
+| Slack | Never | ✗ | ✗ | ✗ |
+| Discord | Never | ✗ | ✗ | ✗ |
+| Jira | 1 hour | ✓ | ✓ ⚠️ | ✓ ⚠️ |
+| Linear | 24 hours | ✗ | ✗ | ✗ |
+| Apple | 20 min (JWT) | ✗ (regen) | ✗ | ✗ |
+| Google Play | 1 hour | ✓ | ✗ | ✗ |
+
+<Callout type="warn">
+**Jira** is the only adapter with `rotatesRefreshToken: true` and `requiresRefreshLock: true`. You **must** wrap Jira token refreshes in a distributed lock and atomically swap both `accessToken` and `refreshToken` in your database.
+</Callout>
+
+---
+
+## Webhook signature algorithms
+
+| Adapter | Algorithm | Header |
+|---------|-----------|--------|
+| GitHub | HMAC-SHA256 | `X-Hub-Signature-256: sha256=<hmac>` |
+| GitLab | Constant-time string equality | `X-Gitlab-Token: <secret>` |
+| Slack | HMAC-SHA256 + timestamp anti-replay | `X-Slack-Signature: v0=<hmac>` |
+| Discord | Ed25519 asymmetric | `X-Signature-Ed25519`, `X-Signature-Timestamp` |
+| Jira | HMAC-SHA256 | `X-Hub-Signature: sha256=<hmac>` |
+| Linear | HMAC-SHA256 | `linear-signature: <hmac>` |
+| Apple | Signed JWT payload | `signedPayload` field in body |
+| Google Play | Pub/Sub message token | Pub/Sub envelope |
+
+---
+
+## Token metadata reference
+
+Each adapter declares a `tokenMetadata` object that drives the hub's refresh scheduler:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `expiresInSeconds` | `number \| null` | `null` = token never expires (e.g. Slack, Discord) |
+| `refreshable` | `boolean` | Whether a `refreshToken` call is supported |
+| `rotatesRefreshToken` | `boolean` | If `true`, refresh token is single-use — old token is invalidated immediately |
+| `requiresRefreshLock` | `boolean` | If `true`, you must acquire a distributed lock before calling `refreshToken` |
+
+---
+
+## Listing registered adapters
+
+Call `hub.listAdapters()` to enumerate all adapters registered with your hub, including metadata and capabilities:
+
+```typescript title="lib/integrations.ts" lineNumbers
+const adapters = hub.listAdapters();
+// [
+//   {
+//     key: 'github',
+//     id: 'github',
+//     name: 'GitHub',
+//     capabilities: ['source-control'],
+//     metadata: {
+//       description: 'Connect GitHub repositories to track pull requests, commits, and deployments.',
+//       category: 'Source Control',
+//       dateAdded: '2024-01-15',
+//       websiteUrl: 'https://github.com',
+//       docsUrl: 'https://docs.github.com/en/apps',
+//     },
+//   },
+//   { key: 'jira', id: 'jira', name: 'Jira', capabilities: ['issue-tracking'], metadata: { ... } },
+//   ...
+// ]
+```
+
+Use this to build dynamic integration UIs:
+
+```typescript title="app/integrations/page.tsx" lineNumbers
+import { hub } from '@/lib/integrations';
+
+export default function IntegrationsPage() {
+  const adapters = hub.listAdapters();
+
+  return (
+    <div>
+      {adapters.map((adapter) => (
+        <div key={adapter.key}>
+          <h2>{adapter.name}</h2>
+          <p>{adapter.metadata.description}</p>
+          <p>Category: {adapter.metadata.category}</p>
+          <p>Capabilities: {adapter.capabilities.join(', ')}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## Accessing capabilities
+
+After registering and initializing the hub, access typed capability interfaces via the adapter:
+
+```typescript title="lib/capabilities.ts" lineNumbers
+const github = hub.getAdapter('github');
+const sc = github.sourceControl!;            // SourceControlCapability
+const repos = await sc.listRepositories(tokens);
+
+const slack = hub.getAdapter('slack');
+const msg = slack.messaging!;                // MessagingCapability
+await msg.sendMessage(tokens, channelId, { text: 'Hello!' });
+
+const jira = hub.getAdapter('jira');
+const it = jira.issueTracking!;              // IssueTrackingCapability
+const issues = await it.listIssues(tokens, { projectId: 'ENG' });
+
+const apple = hub.getAdapter('apple');
+const store = apple.appStore!;               // AppStoreCapability
+const apps = await store.listApps(tokens);
+```

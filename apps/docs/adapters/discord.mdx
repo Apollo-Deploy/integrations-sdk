@@ -1,0 +1,299 @@
+---
+title: Discord
+description: Discord Bot adapter — messaging capability via the Discord REST API with Ed25519 interaction verification.
+---
+
+## Overview
+
+The Discord adapter enables your application to send and receive messages in Discord guilds (servers) via the Discord REST API. It verifies interaction payloads using **Ed25519 asymmetric cryptography** — the strongest verification model in this SDK.
+
+**Capability:** [`messaging`](/docs/capabilities/messaging)
+
+**Auth model:** OAuth 2.0 + bot token (non-expiring)
+
+**Signature algorithm:** Ed25519 (asymmetric — not HMAC)
+
+---
+
+## Prerequisites
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → **New Application**
+2. Under **Bot**, click **Add Bot** → copy the **token** (keep this secret!)
+3. Under **General Information**, copy the **Application ID** (Client ID) and **Public Key**
+4. Under **OAuth2 → General**, add a redirect URL
+5. Under **OAuth2 → URL Generator**, select `bot` and `applications.commands` scopes, then select the permissions your bot needs
+6. To receive interactions, set the **Interactions Endpoint URL** to `https://yourapp.com/webhooks/discord`
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-discord
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createDiscordAdapter } from '@apollo-deploy/adapter-discord';
+
+const discord = createDiscordAdapter({
+  clientId: process.env.DISCORD_CLIENT_ID!,
+  clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+  botToken: process.env.DISCORD_BOT_TOKEN!,
+  publicKey: process.env.DISCORD_PUBLIC_KEY!,
+  // Optional
+  guildId: process.env.DISCORD_GUILD_ID,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | `string` | ✅ | Discord application ID (also the Client ID) |
+| `clientSecret` | `string` | ✅ | OAuth2 Client Secret |
+| `botToken` | `string` | ✅ | Bot token prefixed with `Bot ` (e.g. `Bot MTIz...`) |
+| `publicKey` | `string` | ✅ | Ed25519 hex public key from the Developer Portal — required for signature verification |
+| `guildId` | `string?` | — | Default guild (server) ID for channel operations |
+| `redirectUri` | `string?` | — | Default OAuth2 redirect URI |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+DISCORD_CLIENT_ID=1234567890123456789
+DISCORD_CLIENT_SECRET=abc123def456ghi789jkl
+DISCORD_BOT_TOKEN=Bot MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.abc.xyz
+DISCORD_PUBLIC_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+DISCORD_GUILD_ID=987654321098765432
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createDiscordAdapter } from '@apollo-deploy/adapter-discord';
+
+const hub = new IntegrationHub();
+
+hub.register('discord', createDiscordAdapter({
+  clientId: process.env.DISCORD_CLIENT_ID!,
+  clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+  botToken: process.env.DISCORD_BOT_TOKEN!,
+  publicKey: process.env.DISCORD_PUBLIC_KEY!,
+}));
+
+await hub.initialize();
+
+hub.onEvent('discord', (event) => {
+  if (event.eventType === 'application_command') {
+    const data = event.data as any;
+    console.log('Slash command:', data.data?.name);
+  }
+});
+```
+
+---
+
+## OAuth flow
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/discord-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('discord');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(),
+  scopes: ['bot', 'applications.commands'],
+  redirectUri: 'https://yourapp.com/oauth/callback/discord',
+  extras: {
+    permissions: '2147485696', // SEND_MESSAGES + EMBED_LINKS + READ_MESSAGE_HISTORY
+  },
+});
+// Redirect user to the Discord authorization page
+```
+
+### Discord permission bit calculator
+
+Common permission bit values:
+
+| Permission | Bit value |
+|------------|----------|
+| `VIEW_CHANNEL` | `1024` |
+| `SEND_MESSAGES` | `2048` |
+| `EMBED_LINKS` | `16384` |
+| `ATTACH_FILES` | `32768` |
+| `READ_MESSAGE_HISTORY` | `65536` |
+| `USE_SLASH_COMMANDS` | `2147483648` |
+
+Combine with bitwise OR: `2048 | 16384 | 65536 = 83968`
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/discord/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/discord',
+});
+
+// tokens.accessToken        — user OAuth token
+// tokens.expiresAt          — null (bot tokens don't expire)
+// tokens.providerData       — see below
+```
+
+### `tokens.providerData` reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `guildId` | `string` | The guild (server) ID the bot was added to |
+| `guildName` | `string` | Human-readable guild name |
+
+<Callout type="info">
+The bot token (`DISCORD_BOT_TOKEN`) is used for API calls, not `tokens.accessToken`. The OAuth access token is for user-scoped actions only.
+</Callout>
+
+---
+
+## Webhook events (Interactions)
+
+Discord uses your **Interactions Endpoint URL** to deliver slash commands, button clicks, select menus, and modal submissions. All interactions require **Ed25519 signature verification** — Discord will reject your endpoint if it fails.
+
+### Ed25519 signature verification
+
+The adapter constructs a verification message from `X-Signature-Timestamp + rawBody` and verifies it against `X-Signature-Ed25519` using the DER-encoded Ed25519 public key.
+
+```typescript title="app/webhooks/discord/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.discord({ rawBody, headers });
+
+  // For PING interactions (type: 1), returns { type: 1 } synchronously
+  return new Response(
+    typeof result.body === 'string' ? result.body : JSON.stringify(result.body),
+    {
+      status: result.statusCode ?? 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+```
+
+### PING verification
+
+When you first save your Interactions Endpoint URL, Discord sends a `PING` (type 1). The adapter responds with `{ type: 1 }` synchronously before async dispatch.
+
+### Supported interaction types
+
+| Interaction type | `type` value | Normalized `eventType` | Domain |
+|---|---|---|---|
+| PING | `1` | `ping` | `messaging` |
+| Application Command | `2` | `application_command` | `messaging` |
+| Message Component | `3` | `interaction` | `messaging` |
+| Modal Submit | `5` | `interaction` | `messaging` |
+
+### Delivery ID
+
+Discord does not send a canonical delivery ID header. The adapter uses `X-Discord-Application-Id` as the delivery identifier.
+
+---
+
+## Messaging capability
+
+```typescript
+const msg = hub.getAdapter('discord').messaging!;
+```
+
+### `listChannels(tokens, opts?)`
+
+Lists text channels in the configured guild. The bot must have `VIEW_CHANNEL` permission.
+
+```typescript
+const { items } = await msg.listChannels(tokens, { limit: 100 });
+// items[0]: { id, name, isPrivate }
+// id: Discord numeric channel ID (Snowflake)
+```
+
+### `sendMessage(tokens, channelId, message)`
+
+Send a plain text message to a channel.
+
+```typescript
+const result = await msg.sendMessage(tokens, '1234567890', {
+  text: 'Deployment to production succeeded ✅',
+  threadId: '9876543210', // Optional: send in a thread
+});
+// result.messageId — Discord message ID (Snowflake)
+```
+
+### `sendRichMessage(tokens, channelId, blocks)`
+
+Send a message with Discord **Embeds** — rich cards with title, description, fields, color, thumbnail, and footer.
+
+```typescript
+await msg.sendRichMessage(tokens, '1234567890', [
+  {
+    type: 'rich',
+    title: 'Deployment Complete',
+    description: 'The deployment to **production** has finished.',
+    color: 0x00ff00, // Green
+    fields: [
+      { name: 'App', value: 'my-api', inline: true },
+      { name: 'Version', value: 'v2.4.1', inline: true },
+      { name: 'Duration', value: '47s', inline: true },
+    ],
+    footer: { text: 'Apollo Deploy • ' + new Date().toISOString() },
+    url: 'https://yourapp.com/deployments/123',
+  },
+]);
+```
+
+<Callout type="info">
+Discord's `sendRichMessage` sends embeds. The `type: 'rich'` block is mapped to a Discord embed object. Use [Discord's Embed Generator](https://discohook.org) to preview your embeds.
+</Callout>
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `null` | Bot tokens have no expiry |
+| `refreshable` | `false` | No refresh mechanism |
+| `rotatesRefreshToken` | `false` | N/A |
+| `requiresRefreshLock` | `false` | N/A |
+
+---
+
+## Error handling
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| Invalid Ed25519 signature | `WebhookError` (401) | No |
+| Channel not found (404) | `CapabilityError` | No |
+| Missing permissions (403) | `CapabilityError` | No |
+| Rate limited (429) | `CapabilityError` | Yes |
+| Invalid bot token | `OAuthError` | No |
+
+---
+
+## Common gotchas
+
+**Public key format:** The `publicKey` must be the raw hex string from the Discord Developer Portal (64 hex chars). Do not wrap it in PEM headers.
+
+**Bot token vs. OAuth token:** The bot token (from the Bot settings page) is used for REST API calls. The OAuth access token obtained during the user installation flow is for user-scoped actions only. The adapter uses `botToken` for the `messaging` capability.
+
+**Bot must be in the guild:** The bot can only access channels in guilds where it has been authorized. Use the OAuth URL to add it to a guild, or use the Discord developer portal to manually add it to a test server.
+
+**Rate limits:** Discord has global, per-route, and per-guild rate limits. The adapter throws `CapabilityError` with `retryable: true` on 429 responses. Check `X-RateLimit-Reset-After` for the backoff duration.
+
+**Interactions timeout:** Discord gives you **3 seconds** to respond to an interaction synchronously. After that, you must use the interaction token to send a follow-up (deferred response). The PING is handled inline, but for application commands with slow processing, consider deferring.

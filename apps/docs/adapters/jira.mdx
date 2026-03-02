@@ -1,0 +1,404 @@
+---
+title: Jira
+description: Jira Cloud OAuth adapter — issue tracking with rotating refresh tokens and distributed lock support.
+---
+
+## Overview
+
+The Jira adapter integrates with **Jira Cloud** (Atlassian Cloud) using OAuth 2.0 (3LO — Three-Legged OAuth). It supports creating, reading, updating issues and comments across multiple cloud sites. Jira uses **rotating refresh tokens** — every token refresh issues a new refresh token and invalidates the old one, requiring an atomic database swap.
+
+**Capability:** [`issue-tracking`](/docs/capabilities/issue-tracking)
+
+**Auth model:** OAuth 2.0 (3LO) with rotating refresh tokens
+
+**Token lifetime:** 1 hour, with rotating refresh tokens
+
+<Callout type="warn">
+Jira uses **rotating refresh tokens**. `rotatesRefreshToken: true` and `requiresRefreshLock: true`. You **must** use a distributed lock when refreshing tokens and atomically update both `accessToken` and `refreshToken` in your database. Failing to do so will invalidate the refresh token and require the user to re-authorize.
+</Callout>
+
+---
+
+## Prerequisites
+
+1. Go to [developer.atlassian.com](https://developer.atlassian.com/console/myapps/) → **Create** → **OAuth 2.0 Integration**
+2. Under **Authorization**, add a **Callback URL** (e.g. `https://yourapp.com/oauth/callback/jira`)
+3. Under **Permissions**, add **Jira API** and select the scopes your integration needs
+4. Under **Settings**, copy the **Client ID** and **Secret**
+5. For webhooks: in your Jira Cloud site → **Settings → System → WebHooks** → **Create a WebHook**
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-jira
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createJiraAdapter } from '@apollo-deploy/adapter-jira';
+
+const jira = createJiraAdapter({
+  clientId: process.env.JIRA_CLIENT_ID!,
+  clientSecret: process.env.JIRA_CLIENT_SECRET!,
+  webhookSecret: process.env.JIRA_WEBHOOK_SECRET!,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `clientId` | `string` | ✅ | Atlassian OAuth 2.0 Client ID |
+| `clientSecret` | `string` | ✅ | Atlassian OAuth 2.0 Client Secret |
+| `webhookSecret` | `string` | ✅ | Shared secret for `X-Hub-Signature` HMAC-SHA256 verification |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+JIRA_CLIENT_ID=abc123def456ghi789jkl
+JIRA_CLIENT_SECRET=ATOA_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+JIRA_WEBHOOK_SECRET=whsec_your_secret_here_at_least_32_chars
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createJiraAdapter } from '@apollo-deploy/adapter-jira';
+
+const hub = new IntegrationHub();
+
+hub.register('jira', createJiraAdapter({
+  clientId: process.env.JIRA_CLIENT_ID!,
+  clientSecret: process.env.JIRA_CLIENT_SECRET!,
+  webhookSecret: process.env.JIRA_WEBHOOK_SECRET!,
+}));
+
+await hub.initialize();
+
+hub.onEvent('jira', (event) => {
+  if (event.eventType === 'issue.created') {
+    const issue = (event.data as any).issue;
+    console.log('New issue:', issue.key, issue.fields.summary);
+  }
+});
+```
+
+---
+
+## OAuth flow
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/jira-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('jira');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(), // Store in session
+  scopes: [
+    'read:jira-work',
+    'write:jira-work',
+    'read:jira-user',
+    'offline_access',          // REQUIRED for refresh tokens
+  ],
+  redirectUri: 'https://yourapp.com/oauth/callback/jira',
+});
+```
+
+### Required and recommended scopes
+
+| Scope | Description | When needed |
+|-------|-------------|-------------|
+| `read:jira-work` | Read issues, comments, projects, boards | Always |
+| `write:jira-work` | Create/update issues, add comments | Create/update operations |
+| `read:jira-user` | Read user profiles and account info | Assignee lookup |
+| `manage:jira-project` | Create/update/delete projects | Project management |
+| `manage:jira-configuration` | Admin config (issue types, priorities) | Advanced setup |
+| `offline_access` | Receive a refresh token | **Always — required for refresh** |
+
+<Callout type="warn">
+`offline_access` **must** be included in scopes. Without it, Jira will not issue a refresh token and users will need to re-authorize every hour.
+</Callout>
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/jira/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/jira',
+});
+
+// tokens.accessToken           — Bearer token for API calls (1 hour)
+// tokens.refreshToken          — Refresh token (rotating — store securely)
+// tokens.expiresAt             — approximately 1 hour from now
+// tokens.providerData          — see below
+```
+
+### `tokens.providerData` reference
+
+The adapter's `afterAuthorize` hook calls the Atlassian `/oauth/token/accessible-resources` endpoint to discover the user's cloud sites:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `cloudId` | `string` | The Atlassian Cloud ID — **required for all Jira API calls** |
+| `cloudName` | `string` | Human-readable site name (e.g. `acme.atlassian.net`) |
+
+### Step 3 — Token refresh (critical: rotating tokens)
+
+Because `rotatesRefreshToken: true`, you **must wrap the refresh in a distributed lock** and atomically save both new tokens:
+
+```typescript title="lib/jira-refresh.ts" lineNumbers
+import { acquireLock, releaseLock } from './your-lock-provider'; // Redis, DB advisory lock, etc.
+
+async function refreshJiraTokens(userId: string, storedTokens: TokenSet) {
+  const lock = await acquireLock(`jira:refresh:${userId}`, 10_000);
+  if (!lock) {
+    // Another instance is refreshing — wait and re-read from DB
+    await sleep(500);
+    return readTokensFromDb(userId);
+  }
+
+  try {
+    const fresh = await adapter.oauth.refreshToken(storedTokens.refreshToken!);
+    // Atomically save both tokens
+    await db.tokens.update(userId, {
+      accessToken: fresh.accessToken,
+      refreshToken: fresh.refreshToken,  // NEW refresh token — old one is now invalid
+      expiresAt: fresh.expiresAt,
+    });
+    return fresh;
+  } finally {
+    await releaseLock(lock);
+  }
+}
+```
+
+<Callout type="warn">
+If you call `refreshToken` twice concurrently with the same refresh token, Atlassian will invalidate both and the user will need to re-authorize. Always use `requiresRefreshLock: true` from `tokenMetadata` to guard this.
+</Callout>
+
+---
+
+## Webhook events
+
+Jira sends webhooks using HMAC-SHA256 in `X-Hub-Signature: sha256=<hmac>`.
+
+### Setting up webhooks
+
+In your Jira Cloud site: **Settings → System → WebHooks → Create WebHook**
+- URL: `https://yourapp.com/webhooks/jira`
+- Check **Issue events**: Created, Updated, Deleted
+- Check **Comment events**: Created, Updated, Deleted
+
+```typescript title="app/webhooks/jira/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.jira({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported events
+
+| Jira `webhookEvent` | Normalized `eventType` | Domain |
+|---|---|---|
+| `jira:issue_created` | `issue.created` | `issue-tracking` |
+| `jira:issue_updated` | `issue.updated` | `issue-tracking` |
+| `jira:issue_deleted` | `issue.deleted` | `issue-tracking` |
+| `comment_created` | `issue.comment_added` | `issue-tracking` |
+| `comment_updated` | `issue.comment_updated` | `issue-tracking` |
+| `sprint_created` | `sprint.created` | `issue-tracking` |
+| `sprint_updated` | `sprint.updated` | `issue-tracking` |
+
+### Delivery ID
+
+The adapter uses `X-Atlassian-Webhook-Identifier` as the delivery ID for deduplication.
+
+---
+
+## Issue Tracking capability
+
+```typescript
+const it = hub.getAdapter('jira').issueTracking!;
+```
+
+<Callout type="info">
+All Jira API calls require `cloudId` from `tokens.providerData`. The adapter extracts it automatically. If it's missing, a `CapabilityError` with message `'cloudId missing from providerData — re-authorise'` is thrown.
+</Callout>
+
+### `listIssues(tokens, filters?)`
+
+Search issues using a subset of JQL (Jira Query Language).
+
+```typescript
+const { items, hasMore } = await it.listIssues(tokens, {
+  projectId: 'BACKEND',   // Jira project key
+  limit: 50,
+});
+
+// items[0]:
+// {
+//   id: '10042',
+//   key: 'BACKEND-123',
+//   title: 'Bug: login crashes on mobile',
+//   description: '...',
+//   status: 'In Progress',
+//   priority: 'High',
+//   assignee: { id: 'accountId', name: 'Jane Doe' },
+//   labels: ['mobile', 'auth'],
+//   url: ''
+// }
+```
+
+**`filters` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `projectId` | `string?` | Jira project key (e.g. `BACKEND`) |
+| `limit` | `number?` | Max results (default: 50, max: 100) |
+| `status` | `string?` | Filter by status name |
+| `assigneeId` | `string?` | Filter by Atlassian account ID |
+
+---
+
+### `getIssue(tokens, issueId)`
+
+Fetch a single issue by key or numeric ID.
+
+```typescript
+const issue = await it.getIssue(tokens, 'BACKEND-123');
+// or by numeric ID:
+const issue = await it.getIssue(tokens, '10042');
+```
+
+---
+
+### `createIssue(tokens, input)`
+
+Create a new issue. The issue type defaults to `Story`.
+
+```typescript
+const issue = await it.createIssue(tokens, {
+  projectId: 'BACKEND',           // Project key
+  title: 'Implement OAuth refresh lock',
+  description: 'As described in issue #42...',
+});
+
+// issue.key — 'BACKEND-456'
+// issue.id  — '10099'
+```
+
+**`CreateIssueInput` fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `projectId` | `string` | ✅ | Jira project key |
+| `title` | `string` | ✅ | Issue summary (title) |
+| `description` | `string?` | — | Issue description (plain text, converted to Jira doc format) |
+| `assigneeId` | `string?` | — | Atlassian account ID of the assignee |
+| `priority` | `string?` | — | Priority name (e.g. `High`, `Medium`) |
+| `labels` | `string[]?` | — | Label strings |
+
+---
+
+### `updateIssue(tokens, issueId, input)`
+
+Update an existing issue's fields.
+
+```typescript
+const updated = await it.updateIssue(tokens, 'BACKEND-123', {
+  title: 'New summary',
+  status: 'Done',
+});
+```
+
+**`UpdateIssueInput` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | `string?` | Update issue summary |
+| `description` | `string?` | Update description |
+| `status` | `string?` | Transition to this status name |
+| `assigneeId` | `string?` | Reassign to this account ID |
+| `priority` | `string?` | Update priority |
+
+---
+
+### `addComment(tokens, issueId, body)`
+
+Add a plain-text comment to an issue.
+
+```typescript
+const comment = await it.addComment(
+  tokens,
+  'BACKEND-123',
+  'Fixed in PR #456 — deploying to staging.'
+);
+
+// {
+//   id: '10234',
+//   body: 'Fixed in PR #456...',
+//   author: { id: 'abc123', name: 'Jane Doe' },
+//   createdAt: Date
+// }
+```
+
+---
+
+### `listProjects(tokens)`
+
+List all Jira projects accessible to the authenticated user on their cloud site.
+
+```typescript
+const projects = await it.listProjects(tokens);
+// [{ id: '10001', key: 'BACKEND', name: 'Backend API' }]
+```
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `3600` | Access tokens expire after 1 hour |
+| `refreshable` | `true` | Standard `refresh_token` grant |
+| `rotatesRefreshToken` | `true` ⚠️ | Old refresh token invalidated immediately on use |
+| `requiresRefreshLock` | `true` ⚠️ | Must use distributed lock to prevent concurrent refresh |
+
+---
+
+## Error handling
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| Expired access token | `TokenRefreshError` | Yes |
+| Concurrent refresh (race condition) | `TokenRefreshError` | Yes — re-read DB |
+| `cloudId` missing from `providerData` | `CapabilityError` | No — re-auth needed |
+| Issue not found (404) | `CapabilityError` | No |
+| Rate limited (429) | `CapabilityError` | Yes |
+| Invalid webhook signature | `WebhookError` (400) | No |
+
+---
+
+## Common gotchas
+
+**Multiple Atlassian sites:** If a user has multiple Jira Cloud sites, `afterAuthorize` picks the first one. Store `cloudId` and `cloudName` in your connection record and allow users to select their target site.
+
+**Status transitions:** The `updateIssue` `status` field uses the status *name* (e.g. `'In Progress'`). Transitions are project-specific — if the transition is not valid for the current status, Jira returns a 400. Use the Jira REST API directly to fetch available transitions for an issue.
+
+**Issue type:** The `createIssue` adapter defaults the issue type to `Story`. If your project uses different types (Bug, Task, Epic), use `createIssue` and then immediately update the type, or extend the adapter.
+
+**Webhook secret:** After creating a webhook in Jira, the secret must match exactly what you set in `JIRA_WEBHOOK_SECRET`. Jira sends `sha256=` as the `X-Hub-Signature` prefix.

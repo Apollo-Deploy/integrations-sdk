@@ -1,0 +1,492 @@
+---
+title: GitHub
+description: GitHub Apps adapter — source control capability with installation-based access tokens and HMAC-SHA256 webhook verification.
+---
+
+## Overview
+
+The GitHub adapter connects your application to GitHub using **GitHub Apps** — the recommended authentication method for building integrations. Unlike OAuth Apps, GitHub Apps have fine-grained repository permissions, can be installed organization-wide, and use short-lived installation tokens that are automatically refreshed by re-signing a JWT with your private key.
+
+**Capability:** [`source-control`](/docs/capabilities/source-control)
+
+**Auth model:** JWT (App) → installation access token (user/repo level)
+
+**Token lifetime:** 1 hour, auto-refreshed via private key signing
+
+---
+
+## Prerequisites
+
+Before adding this adapter you need a **GitHub App** registered in your GitHub account or organization.
+
+1. Go to **Settings → Developer settings → GitHub Apps → New GitHub App**
+2. Set **Homepage URL** and **Callback URL** (e.g. `https://yourapp.com/oauth/callback/github`)
+3. Under **Webhook**, set your URL and choose a **Webhook secret**
+4. Grant the **Repository permissions** your integration needs (e.g. Contents: Read, Pull requests: Read & write, Commit statuses: Read & write)
+5. Under **Subscribe to events**, check the events you want to receive (Push, Pull request, Deployment status, etc.)
+6. After creation, note the **App ID** and generate a **Private key** (downloads as a `.pem` file)
+7. Add an **OAuth client ID / secret** (found under the app settings) for the installation OAuth flow
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-github
+```
+
+---
+
+## Configuration
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createGithubAdapter } from '@apollo-deploy/adapter-github';
+
+const github = createGithubAdapter({
+  appId: process.env.GITHUB_APP_ID!,
+  privateKey: process.env.GITHUB_PRIVATE_KEY!,
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `appId` | `string` | ✅ | Numeric App ID from your GitHub App settings page |
+| `privateKey` | `string` | ✅ | PEM-encoded RSA private key downloaded from the app settings. Include full header/footer and literal `\n` newlines |
+| `clientId` | `string` | ✅ | OAuth Client ID from your GitHub App settings |
+| `clientSecret` | `string` | ✅ | OAuth Client Secret from your GitHub App settings |
+| `webhookSecret` | `string` | ✅ | Webhook secret configured during app creation — used to verify `X-Hub-Signature-256` |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+GITHUB_APP_ID=123456
+GITHUB_CLIENT_ID=Iv1.abc123def456
+GITHUB_CLIENT_SECRET=your_oauth_client_secret
+# Multi-line PEM key — use literal \n or load from file
+GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----"
+GITHUB_WEBHOOK_SECRET=whsec_your_secret_here
+```
+
+<Callout type="warn">
+Store `GITHUB_PRIVATE_KEY` carefully. Never commit it to source control. For production, use a secrets manager (AWS Secrets Manager, Doppler, Vault) and inject at runtime.
+</Callout>
+
+**Loading a `.pem` file at runtime:**
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { readFileSync } from 'node:fs';
+
+const github = createGithubAdapter({
+  appId: process.env.GITHUB_APP_ID!,
+  privateKey: readFileSync('./keys/github-app.pem', 'utf8'),
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+});
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createGithubAdapter } from '@apollo-deploy/adapter-github';
+
+const hub = new IntegrationHub();
+
+hub.register('github', createGithubAdapter({
+  appId: process.env.GITHUB_APP_ID!,
+  privateKey: process.env.GITHUB_PRIVATE_KEY!,
+  clientId: process.env.GITHUB_CLIENT_ID!,
+  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+}));
+
+await hub.initialize();
+
+// Listen for any pull request event
+hub.onEvent('github', (event) => {
+  if (event.eventType.startsWith('pull_request.')) {
+    console.log('PR event:', event.eventType, event.data);
+  }
+});
+```
+
+---
+
+## OAuth / App installation flow
+
+GitHub Apps use an **installation-based token model** — distinct from standard OAuth 2.0. When a user installs your app on their account or organization, GitHub gives you an `installation_id`. You use your private key to sign a short-lived JWT and exchange it for an **installation access token**.
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/github-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('github');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(), // CSRF token — store in session
+  scopes: [],                 // Scopes are set on the GitHub App, not in the URL
+  redirectUri: 'https://yourapp.com/oauth/callback/github',
+  // extras: { suggested_target_id: orgId } — pre-select an org
+});
+
+// Redirect user to: https://github.com/apps/<APP_ID>/installations/new?state=...
+```
+
+### Step 2 — Exchange the code
+
+After GitHub redirects back to your callback URL with `?code=...&installation_id=...`:
+
+```typescript title="app/oauth/callback/github/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/github',
+});
+
+// tokens.accessToken        — installation access token (valid 1 hour)
+// tokens.expiresAt          — expiry Date
+// tokens.providerData       — see table below
+// tokens.scope              — comma-separated scope string
+```
+
+### `tokens.providerData` reference
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `installationId` | `number` | The installation ID — required for all API calls and token refresh |
+| `appId` | `string` | The GitHub App ID |
+
+### Step 3 — Refresh tokens
+
+Installation tokens expire after **1 hour**. Pass the `installationId` as the "refresh token":
+
+```typescript title="lib/github-refresh.ts" lineNumbers
+// The installationId acts as the refresh credential
+const refreshed = await adapter.oauth.refreshToken(
+  String(tokens.providerData.installationId)
+);
+
+// refreshed.accessToken — new installation token
+// refreshed.expiresAt   — new expiry (1 hour from now)
+```
+
+<Callout type="info">
+Because `rotatesRefreshToken` is `false`, the `installationId` never changes — multiple parallel refresh calls are safe and idempotent. No distributed lock is required.
+</Callout>
+
+### Step 4 — Get authenticated identity
+
+```typescript
+const identity = await adapter.oauth.getIdentity(tokens.accessToken);
+// identity.providerAccountId — GitHub App numeric ID
+// identity.displayName       — App name
+// identity.metadata.slug     — URL slug of the app
+```
+
+### OAuth scopes
+
+GitHub App permissions are configured in the app settings, not requested per-user. Common permission combinations:
+
+| Use case | Permissions needed |
+|----------|-------------------|
+| Read repos + PRs | Contents: Read, Pull requests: Read |
+| Post commit statuses | Commit statuses: Read & write |
+| Deployments | Deployments: Read & write |
+| Issues | Issues: Read & write |
+
+---
+
+## Webhook events
+
+GitHub sends a `POST` to your webhook URL with `X-Hub-Signature-256: sha256=<hmac>` and `X-GitHub-Event: <event>` headers.
+
+### Signature verification
+
+The adapter computes `HMAC-SHA256(secret, rawBody)` and uses `timingSafeEqual` to compare with the `X-Hub-Signature-256` header. **Always pass the raw request body (before JSON parsing) to the hub.**
+
+```typescript title="app/webhooks/github/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.github({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported events
+
+| GitHub event | Action | Normalized `eventType` | Domain |
+|---|---|---|---|
+| `push` | — | `push` | `source-control` |
+| `pull_request` | `opened` | `pull_request.created` | `source-control` |
+| `pull_request` | `closed` (not merged) | `pull_request.closed` | `source-control` |
+| `pull_request` | `closed` + `merged: true` | `pull_request.merged` | `source-control` |
+| `pull_request` | `reopened` | `pull_request.reopened` | `source-control` |
+| `pull_request` | `synchronize` | `pull_request.updated` | `source-control` |
+| `pull_request_review` | `submitted` | `pull_request_review.submitted` | `source-control` |
+| `deployment` | — | `deployment.created` | `source-control` |
+| `deployment_status` | — | `deployment.status_updated` | `source-control` |
+| `release` | `published` | `release.published` | `source-control` |
+| `workflow_run` | `completed` | `workflow_run.completed` | `source-control` |
+| `check_run` | `completed` | `check_run.completed` | `source-control` |
+| `status` | — | `commit_status.updated` | `source-control` |
+| `create` | — | `ref.created` | `source-control` |
+| `delete` | — | `ref.deleted` | `source-control` |
+
+### Event object structure
+
+Every normalized event has the following shape:
+
+```typescript
+{
+  id: string;                  // UUID generated by the adapter
+  provider: 'github';
+  providerEventType: string;   // e.g. 'pull_request.opened'
+  domain: 'source-control';
+  eventType: string;           // normalized e.g. 'pull_request.created'
+  timestamp: Date;
+  correlationId: string;       // UUID
+  connectionId: string;        // set to the registration key ('github')
+  actor: {
+    id: string;                // GitHub user numeric ID
+    name: string;              // GitHub username (login)
+    avatarUrl?: string;        // GitHub avatar URL
+  } | undefined;
+  data: Record<string, unknown>; // Full raw GitHub payload
+}
+```
+
+### Delivery ID
+
+The hub uses `X-GitHub-Delivery` for idempotency. It will throw a `WebhookError` if this header is missing.
+
+---
+
+## Source Control capability
+
+Access the capability after registering and initializing the hub:
+
+```typescript title="lib/github-api.ts" lineNumbers
+const sc = hub.getAdapter('github').sourceControl!;
+```
+
+### `listRepositories(tokens, opts?)`
+
+Returns a paginated list of repositories accessible to the installation.
+
+```typescript
+const page1 = await sc.listRepositories(tokens);
+// { items: Repository[], hasMore: boolean, cursor?: string }
+
+// Next page
+const page2 = await sc.listRepositories(tokens, { cursor: page1.cursor, limit: 50 });
+```
+
+**`opts` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `limit` | `number?` | Items per page (default: 30, max: 100) |
+| `cursor` | `string?` | Opaque page cursor from previous response |
+
+**Returns `Repository`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | `owner/repo` format e.g. `acme/api` |
+| `name` | `string` | Repository name |
+| `fullName` | `string` | `owner/repo` |
+| `description` | `string?` | Repository description |
+| `isPrivate` | `boolean` | Private visibility flag |
+| `defaultBranch` | `string` | Default branch name |
+| `url` | `string` | Web URL |
+| `cloneUrl` | `string` | HTTPS clone URL |
+| `language` | `string?` | Primary programming language |
+| `updatedAt` | `Date` | Last updated timestamp |
+
+---
+
+### `getRepository(tokens, repoId)`
+
+Fetch a single repository by `owner/repo` ID.
+
+```typescript
+const repo = await sc.getRepository(tokens, 'acme/api');
+```
+
+---
+
+### `listBranches(tokens, repoId, opts?)`
+
+List all branches for a repository.
+
+```typescript
+const { items } = await sc.listBranches(tokens, 'acme/api', { limit: 100 });
+// items[0]: { id, name, sha, isDefault, isProtected, url }
+```
+
+**Returns `Branch`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Branch name |
+| `name` | `string` | Branch name |
+| `sha` | `string` | HEAD commit SHA |
+| `isDefault` | `boolean` | Whether this is the default branch |
+| `isProtected` | `boolean` | Branch protection enabled |
+| `url` | `string` | Web URL |
+
+---
+
+### `getPullRequest(tokens, repoId, prNumber)`
+
+Fetch a single pull request by number.
+
+```typescript
+const pr = await sc.getPullRequest(tokens, 'acme/api', 42);
+```
+
+**Returns `PullRequest`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | PR number as string |
+| `number` | `number` | PR number |
+| `title` | `string` | PR title |
+| `body` | `string?` | PR description |
+| `state` | `'open' \| 'closed' \| 'merged'` | Current state |
+| `author` | `{ id, name, avatarUrl? }` | PR author |
+| `sourceBranch` | `string` | Head branch |
+| `targetBranch` | `string` | Base branch |
+| `url` | `string` | Web URL |
+| `createdAt` | `Date` | Creation timestamp |
+| `updatedAt` | `Date` | Last updated timestamp |
+| `mergedAt` | `Date?` | Merge timestamp if merged |
+
+---
+
+### `createCommitStatus(tokens, repoId, sha, status)`
+
+Post a commit status (used for CI/CD checks, deployment gates).
+
+```typescript
+await sc.createCommitStatus(tokens, 'acme/api', '3da541...', {
+  state: 'success',         // 'pending' | 'success' | 'failure' | 'error'
+  context: 'ci/tests',      // Unique label for the check
+  description: 'All 42 tests passed',
+  targetUrl: 'https://ci.yourapp.com/builds/123',
+});
+```
+
+**`CommitStatusInput` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `'pending' \| 'success' \| 'failure' \| 'error'` | Status state |
+| `context` | `string` | Label (e.g. `ci/tests`, `deploy/staging`) |
+| `description` | `string?` | Short human-readable description |
+| `targetUrl` | `string?` | Link to the build/deploy details |
+
+---
+
+### `listCommits(tokens, repoId, opts?)`
+
+List commits for a repository with optional filters.
+
+```typescript
+const { items } = await sc.listCommits(tokens, 'acme/api', {
+  branch: 'main',
+  since: new Date('2024-01-01'),
+  until: new Date('2024-02-01'),
+  limit: 50,
+});
+```
+
+**`CommitListOpts` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `branch` | `string?` | Filter by branch name or SHA |
+| `since` | `Date?` | Only commits after this date |
+| `until` | `Date?` | Only commits before this date |
+| `limit` | `number?` | Items per page (default: 30) |
+| `cursor` | `string?` | Pagination cursor |
+
+**Returns `Commit`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sha` | `string` | Full commit SHA |
+| `message` | `string` | Commit message |
+| `author` | `{ name, email, date }` | Commit author |
+| `url` | `string` | Web URL |
+| `parents` | `string[]` | Parent SHAs |
+
+---
+
+## Token metadata
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `expiresInSeconds` | `3600` | Installation tokens expire after exactly 1 hour |
+| `refreshable` | `true` | Re-signing a JWT + calling `/app/installations/{id}/access_tokens` |
+| `rotatesRefreshToken` | `false` | `installationId` is stable — no rotation on refresh |
+| `requiresRefreshLock` | `false` | JWT signing is idempotent, parallel refreshes are safe |
+
+---
+
+## Error handling
+
+The GitHub adapter maps API errors to SDK error types:
+
+| Scenario | Error class | Retryable |
+|----------|-------------|-----------|
+| Invalid/expired installation token | `TokenRefreshError` | Yes — retry refresh |
+| Repository not found | `CapabilityError` | No |
+| Permission denied (403) | `CapabilityError` | No |
+| Rate limited (429 / 403 with `X-RateLimit-Remaining: 0`) | `CapabilityError` | Yes |
+| Invalid webhook signature | `WebhookError` (400) | No |
+| Missing `X-GitHub-Delivery` header | `WebhookError` (400) | No |
+| OAuth code exchange failed | `OAuthError` | No |
+
+```typescript title="lib/error-handling.ts" lineNumbers
+import { CapabilityError, TokenRefreshError, WebhookError } from '@apollo-deploy/integrations';
+
+try {
+  const repos = await sc.listRepositories(tokens);
+} catch (err) {
+  if (err instanceof CapabilityError && err.retryable) {
+    // Rate limited — back off and retry
+    await sleep(60_000);
+  } else if (err instanceof TokenRefreshError) {
+    // Token expired — trigger re-auth
+  }
+}
+```
+
+---
+
+## Common gotchas
+
+**Private key formatting:** Environment variables often strip literal newlines. Store the key with `\n` escape sequences and ensure your runtime converts them:
+
+```typescript
+const privateKey = process.env.GITHUB_PRIVATE_KEY!.replace(/\\n/g, '\n');
+```
+
+**GitHub Enterprise Server:** The adapter targets `api.github.com`. For GHES, you need to fork or configure the adapter with a custom `baseUrl` — this is not yet a config option; use `GITHUB_API_URL` environment variable patterns if running enterprise infra.
+
+**Installation scope:** An installation token only has access to repositories the app is installed on. If `listRepositories` returns fewer repos than expected, check the app installation settings in GitHub.
+
+**Rate limits:** GitHub Apps have a secondary rate limit of 5,000 requests/hour per installation and additionally a per-endpoint secondary rate limit. Check `X-RateLimit-Remaining` in webhook responses and back off when near the limit.
