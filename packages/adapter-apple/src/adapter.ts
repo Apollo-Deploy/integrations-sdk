@@ -7,6 +7,13 @@ import type { AppleAdapterConfig } from './types.js';
 export const createAppleAdapter = defineAdapter<AppleAdapterConfig>({
   id: 'apple',
   name: 'Apple App Store Connect',
+  metadata: {
+    description: 'Manage iOS and macOS app submissions, TestFlight builds, and App Store releases.',
+    category: 'App Stores',
+    dateAdded: '2024-06-01',
+    websiteUrl: 'https://appstoreconnect.apple.com',
+    docsUrl: 'https://developer.apple.com/documentation/appstoreconnectapi',
+  },
   capabilities: ['app-store'] as const,
 
   tokenMetadata: {

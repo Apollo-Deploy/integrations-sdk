@@ -7,6 +7,13 @@ import type { SlackAdapterConfig } from './types.js';
 export const createSlackAdapter = defineAdapter<SlackAdapterConfig>({
   id: 'slack',
   name: 'Slack',
+  metadata: {
+    description: 'Send deployment notifications and alerts to Slack channels.',
+    category: 'Messaging',
+    dateAdded: '2024-01-15',
+    websiteUrl: 'https://slack.com',
+    docsUrl: 'https://api.slack.com',
+  },
   capabilities: ['messaging'] as const,
 
   tokenMetadata: {

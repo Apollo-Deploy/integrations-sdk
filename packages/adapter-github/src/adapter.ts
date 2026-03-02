@@ -17,6 +17,13 @@ import type { GithubAdapterConfig } from './types.js';
 export const createGithubAdapter = defineAdapter<GithubAdapterConfig>({
   id: 'github',
   name: 'GitHub',
+  metadata: {
+    description: 'Connect GitHub repositories to track pull requests, commits, and code deployments.',
+    category: 'Source Control',
+    dateAdded: '2024-01-15',
+    websiteUrl: 'https://github.com',
+    docsUrl: 'https://docs.github.com/en/apps',
+  },
   capabilities: ['source-control'] as const,
 
   tokenMetadata: {

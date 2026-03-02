@@ -7,6 +7,13 @@ import type { JiraAdapterConfig } from './types.js';
 export const createJiraAdapter = defineAdapter<JiraAdapterConfig>({
   id: 'jira',
   name: 'Jira',
+  metadata: {
+    description: 'Link deployments to Jira issues and automatically transition ticket statuses.',
+    category: 'Project Management',
+    dateAdded: '2024-01-20',
+    websiteUrl: 'https://www.atlassian.com/software/jira',
+    docsUrl: 'https://developer.atlassian.com/cloud/jira',
+  },
   capabilities: ['issue-tracking'] as const,
 
   tokenMetadata: {

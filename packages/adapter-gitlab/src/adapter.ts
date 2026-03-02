@@ -8,6 +8,13 @@ import type { GitlabAdapterConfig } from './types.js';
 export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
   id: 'gitlab',
   name: 'GitLab',
+  metadata: {
+    description: 'Connect GitLab projects for source control, merge requests, and issue tracking.',
+    category: 'Source Control',
+    dateAdded: '2024-02-01',
+    websiteUrl: 'https://gitlab.com',
+    docsUrl: 'https://docs.gitlab.com/ee/api/oauth2.html',
+  },
   capabilities: ['source-control', 'issue-tracking'] as const,
 
   tokenMetadata: {

@@ -23,6 +23,7 @@
 import type {
   AdapterCapability,
   AdapterContext,
+  AdapterMetadata,
   IntegrationAdapter,
   TokenMetadata,
 } from './types/adapter.js';
@@ -36,6 +37,8 @@ import type { AppStoreCapability } from './types/capabilities/app-store.js';
 export interface AdapterDefinition<TConfig> {
   id: string;
   name: string;
+  /** Descriptive metadata: icon, description, dateAdded, category, docsUrl, websiteUrl. */
+  metadata?: AdapterMetadata;
   capabilities: readonly AdapterCapability[];
   tokenMetadata: TokenMetadata;
 
@@ -65,6 +68,7 @@ export function defineAdapter<TConfig>(
     const adapter: IntegrationAdapter<TConfig> = {
       id: definition.id,
       name: definition.name,
+      metadata: definition.metadata,
       capabilities: definition.capabilities,
       tokenMetadata: definition.tokenMetadata,
 

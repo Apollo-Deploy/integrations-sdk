@@ -11,6 +11,7 @@
 export { IntegrationHub } from './hub.js';
 export type {
   HubConfig,
+  AdapterInfo,
   WebhookRequest,
   WebhookResponse,
   WebhookHandlerOptions,
@@ -38,6 +39,7 @@ export type {
   IntegrationAdapter,
   AdapterCapability,
   AdapterContext,
+  AdapterMetadata,
   TokenMetadata,
   Logger,
 } from './types/adapter.js';

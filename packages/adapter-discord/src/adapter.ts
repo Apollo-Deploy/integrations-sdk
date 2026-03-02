@@ -7,6 +7,13 @@ import type { DiscordAdapterConfig } from './types.js';
 export const createDiscordAdapter = defineAdapter<DiscordAdapterConfig>({
   id: 'discord',
   name: 'Discord',
+  metadata: {
+    description: 'Post deployment updates and alerts to Discord servers via webhooks.',
+    category: 'Messaging',
+    dateAdded: '2024-03-10',
+    websiteUrl: 'https://discord.com',
+    docsUrl: 'https://discord.com/developers/docs',
+  },
   capabilities: ['messaging'] as const,
 
   tokenMetadata: {

@@ -12,6 +12,7 @@ import { UnknownAdapterError } from './errors.js';
 import type {
   AdapterCapability,
   AdapterContext,
+  AdapterMetadata,
   IntegrationAdapter,
   Logger,
 } from './types/adapter.js';
@@ -44,6 +45,23 @@ export interface EventContext {
   hub: IntegrationHub;
   getAdapter<K extends string>(key: K): IntegrationAdapter;
   logger: Logger;
+}
+
+/**
+ * Snapshot of static information about a registered adapter.
+ * Returned by `hub.listAdapters()` for display, discovery, and auditing.
+ */
+export interface AdapterInfo {
+  /** The key this adapter was registered under in the hub (e.g. 'github'). */
+  key: string;
+  /** Unique adapter identifier (mirrors `IntegrationAdapter.id`). */
+  id: string;
+  /** Human-readable name (mirrors `IntegrationAdapter.name`). */
+  name: string;
+  /** Declared capabilities. */
+  capabilities: readonly AdapterCapability[];
+  /** Descriptive metadata: icon, description, dateAdded, etc. */
+  metadata: AdapterMetadata;
 }
 
 export interface HubConfig<TAdapters extends Record<string, IntegrationAdapter>> {
@@ -118,6 +136,23 @@ export class IntegrationHub<
   /** Get an array of all registered adapter IDs. */
   getRegisteredAdapters(): string[] {
     return Object.keys(this.adapters);
+  }
+
+  /**
+   * Return a snapshot of static info for every registered adapter.
+   * Useful for building integration listings, onboarding UIs, or audit logs.
+   */
+  listAdapters(): AdapterInfo[] {
+    return Object.entries(this.adapters).map(([key, adapter]) => {
+      const a = adapter as IntegrationAdapter;
+      return {
+        key,
+        id: a.id,
+        name: a.name,
+        capabilities: a.capabilities,
+        metadata: a.metadata ?? {},
+      };
+    });
   }
 
   // ── Event Subscriptions ───────────────────────────────────────────────────

@@ -7,6 +7,13 @@ import type { GooglePlayAdapterConfig } from './types.js';
 export const createGooglePlayAdapter = defineAdapter<GooglePlayAdapterConfig>({
   id: 'google-play',
   name: 'Google Play Console',
+  metadata: {
+    description: 'Manage Android app releases, tracks, and rollouts via the Google Play Developer API.',
+    category: 'App Stores',
+    dateAdded: '2024-06-15',
+    websiteUrl: 'https://play.google.com/console',
+    docsUrl: 'https://developers.google.com/android-publisher',
+  },
   capabilities: ['app-store'] as const,
 
   tokenMetadata: {

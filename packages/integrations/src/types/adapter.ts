@@ -32,6 +32,38 @@ export interface AdapterContext {
 }
 
 /**
+ * Descriptive metadata about an adapter — used for display, discovery, and auditing.
+ */
+export interface AdapterMetadata {
+  /**
+   * URL or data-URI for the provider's logo/icon.
+   * Recommended: SVG or 64×64 PNG.
+   */
+  iconUrl?: string;
+
+  /** One-sentence description of what the integration does. */
+  description?: string;
+
+  /**
+   * ISO 8601 date string indicating when this adapter was added to the SDK.
+   * @example '2024-01-15'
+   */
+  dateAdded?: string;
+
+  /**
+   * High-level category for grouping adapters in a UI.
+   * @example 'Source Control', 'Messaging', 'Project Management', 'App Stores'
+   */
+  category?: string;
+
+  /** Link to the provider's developer docs or OAuth app setup guide. */
+  docsUrl?: string;
+
+  /** Link to the provider's marketing / home page. */
+  websiteUrl?: string;
+}
+
+/**
  * Token lifecycle metadata — drives refresh scheduling and locking strategy.
  */
 export interface TokenMetadata {
@@ -59,6 +91,9 @@ export interface IntegrationAdapter<_TConfig = unknown> {
 
   /** Human-readable name: 'GitHub', 'Slack', etc. */
   readonly name: string;
+
+  /** Descriptive metadata: icon, description, dateAdded, category, etc. */
+  readonly metadata?: AdapterMetadata;
 
   /** Declared capabilities this adapter supports. */
   readonly capabilities: readonly AdapterCapability[];
