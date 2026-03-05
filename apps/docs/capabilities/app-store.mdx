@@ -1,9 +1,9 @@
 ---
 title: App Store
-description: Manage apps, builds, TestFlight, releases, reviews, ratings, beta groups, and vitals across Apple App Store Connect and Google Play Console.
+description: Manage apps, builds, TestFlight, releases, reviews, ratings, beta groups, vitals, phased releases, binary uploads, and recovery across Apple App Store Connect and Google Play Console.
 ---
 
-The `app-store` capability provides a unified interface for mobile app distribution platforms. Adapters that declare it expose an `appStore` property.
+The `app-store` capability provides a unified interface for mobile app distribution platforms. Adapters that declare it expose an `appStore` property implementing the full `AppStoreCapability` interface.
 
 **Adapters:** [Apple App Store Connect](/docs/adapters/apple), [Google Play Console](/docs/adapters/google-play)
 
@@ -16,9 +16,29 @@ const apple = hub.getAdapter('apple');
 const store = apple.appStore!;
 ```
 
-## App management
+---
 
-### `listApps` / `getApp`
+## Domain model types
+
+The shared type definitions live in `@apollo-deploy/integrations` under `types/models/`, split by domain:
+
+| File | Types |
+|------|-------|
+| `models/shared.ts` | `IntegrationEvent`, `Connection`, `ActorInfo`, `Paginated`, `PaginationOpts` |
+| `models/source-control.ts` | `Repository`, `Branch`, `PullRequest`, `Commit`, `CommitStatusInput` |
+| `models/messaging.ts` | `Channel`, `MessagePayload`, `MessageResult`, `MessageBlock` |
+| `models/issue-tracking.ts` | `Issue`, `CreateIssueInput`, `UpdateIssueInput`, `IssueComment`, `ProjectRef` |
+| `models/app-store.ts` | All app store types (see sections below) |
+
+All types are re-exported from the package root:
+
+```typescript
+import type { StoreApp, StoreBuild, Paginated } from '@apollo-deploy/integrations';
+```
+
+---
+
+## 1. App management
 
 ```typescript lineNumbers
 const apps = await store.listApps(tokens);
@@ -26,130 +46,306 @@ const app = await store.getApp(tokens, 'com.example.myapp');
 // app.id, app.bundleId, app.name, app.platform
 ```
 
-## Builds
+<Callout type="warn">
+Google Play does not support `listApps` — it throws `CapabilityError`. Store package names in your database.
+</Callout>
 
-### `listBuilds` / `getBuild`
+---
+
+## 2. Builds & artifacts
 
 ```typescript lineNumbers
 const builds = await store.listBuilds(tokens, appId, {
   version: '2.1.0',
+  status: 'valid',  // 'processing' | 'valid' | 'invalid' | 'expired'
   limit: 20,
 });
 const build = await store.getBuild(tokens, appId, buildId);
 // build.id, build.version, build.buildNumber, build.status, build.uploadedAt
 ```
 
-### `listBuildArtifacts` / `getArtifactDownloadUrl`
+### Artifacts
 
 Download dSYMs (Apple) or ProGuard mapping files (Google):
 
 ```typescript lineNumbers
 const artifacts = await store.listBuildArtifacts(tokens, appId, buildId);
-// artifacts: StoreArtifact[]  — artifact.id, artifact.type, artifact.filename
+// artifacts: StoreArtifact[] — id, type, fileName, size, downloadable
 
 const { url, expiresAt } = await store.getArtifactDownloadUrl(tokens, appId, buildId, artifactId);
 ```
 
-## Releases
+### Binary uploads
 
-### `listReleases` / `getRelease`
+Upload AAB, APK, or IPA files to the store:
 
 ```typescript lineNumbers
-const releases = await store.listReleases(tokens, appId, { status: 'READY_FOR_SALE' });
-const release = await store.getRelease(tokens, appId, releaseId);
-// release.id, release.version, release.status, release.releaseDate
+// Google Play — store channel (default)
+const result = await store.uploadBinary(tokens, appId, aabFile, {
+  fileType: 'aab',
+  channel: 'store',
+  commitEdit: true,
+});
+// { channel: 'store', fileType: 'aab', build: StoreBuild }
+
+// Google Play — internal sharing
+const result = await store.uploadBinary(tokens, appId, apkFile, {
+  channel: 'internal-sharing',
+});
+// { channel: 'internal-sharing', fileType: 'apk', artifact: InternalSharingArtifact }
 ```
 
-## Tracks & versions (Google Play)
+**Provider support matrix:**
+
+| fileType | channel | Google Play | Apple |
+|----------|---------|-------------|-------|
+| `aab` | `store` | ✓ Edits API | ✗ |
+| `apk` | `store` | ✓ Edits API | ✗ |
+| `ipa` | `store` | ✗ | ✗ (use `xcrun altool`) |
+| `aab`/`apk` | `internal-sharing` | ✓ IAS API | ✗ |
+
+---
+
+## 3. Releases
+
+```typescript lineNumbers
+const releases = await store.listReleases(tokens, appId, { status: 'rolling_out' });
+const release = await store.getRelease(tokens, appId, releaseId);
+// release.id, release.version, release.status, release.track, release.rolloutPercentage
+```
+
+**Normalized status values:** `draft`, `in_review`, `pending_release`, `rolling_out`, `completed`, `halted`, `rejected`, `superseded`
+
+---
+
+## 4. Tracks & versions
 
 ```typescript lineNumbers
 const tracks = await store.listTracks(tokens, appId);
-// tracks: StoreTrack[]  — 'production', 'beta', 'alpha', 'internal'
+// Apple: ['app_store', 'testflight']
+// Google: ['production', 'beta', 'alpha', 'internal']
+
+const track = await store.getTrack(tokens, appId, 'production');
 
 await store.updateTrack(tokens, appId, 'production', {
-  releases: [{ versionCodes: [1234], status: 'inProgress', userFraction: 0.1 }],
+  rolloutPercentage: 50,        // Set rollout %
+  halt: true,                   // Halt rollout
+  resume: true,                 // Resume halted rollout
+  completeRollout: true,        // Release to 100%
+  releases: [{ versionCodes: ['42'], status: 'completed' }],
 });
 ```
 
-## Publishing
+### Versions
 
-### `submitForReview`
+```typescript lineNumbers
+const versions = await store.listVersions(tokens, appId);
+const version = await store.getVersion(tokens, appId, versionId);
+```
 
-Submit a version to the App Store / Play Store for review:
+---
+
+## 5. Publishing
+
+### Submit for review
 
 ```typescript lineNumbers
 const result = await store.submitForReview(tokens, appId, {
   versionId: '1.2.3',
-  releaseNotes: {
-    'en-US': "Bug fixes and performance improvements.",
-    'fr-FR': "Corrections de bugs et améliorations de performances.",
-  },
+  releaseNotes: [{ language: 'en-US', text: 'Bug fixes and improvements.' }],
+  phasedRelease: true,     // Apple: enable phased release
+  autoRelease: false,      // Apple: manual release after approval
 });
-// result.status, result.submittedAt
+// result: { success, status, message, releaseId }
 ```
 
-### `releaseToTrack`
+### Release to track
 
 Release an approved version to users (supports staged rollout):
 
 ```typescript lineNumbers
 await store.releaseToTrack(tokens, appId, {
-  versionId: '1.2.3',
+  buildId: '42',
   track: 'production',
-  rolloutPercentage: 10, // Start at 10%, increase incrementally
+  rolloutPercentage: 10,
+  releaseNotes: [{ language: 'en-US', text: 'New features!' }],
 });
 ```
 
-### `updateRollout`
-
-Adjust rollout percentage of an active release:
+### Update rollout / halt
 
 ```typescript lineNumbers
-await store.updateRollout(tokens, appId, { rolloutPercentage: 50 });
-await store.updateRollout(tokens, appId, { rolloutPercentage: 100 }); // Full rollout
+await store.updateRollout(tokens, appId, releaseId, { rolloutPercentage: 50 });
+await store.updateRollout(tokens, appId, releaseId, { completeRollout: true });
+
+await store.haltRelease(tokens, appId, releaseId, 'Critical issue found');
 ```
 
-## Beta testing (TestFlight / Internal Track)
+---
 
-```typescript lineNumbers
-const groups = await store.listBetaGroups(tokens, appId);
-
-await store.addBetaTesters(tokens, appId, groupId, [
-  { email: 'tester@example.com', firstName: 'Jane', lastName: 'Doe' },
-]);
-
-await store.removeBetaTesters(tokens, appId, groupId, ['tester@example.com']);
-```
-
-## Reviews & ratings
+## 6. Reviews & ratings
 
 ```typescript lineNumbers
 const reviews = await store.listReviews(tokens, appId, {
   territory: 'US',
-  rating: 1, // Only 1-star reviews
-  perPage: 50,
+  minRating: 1,
+  maxRating: 2,
+  sortBy: 'date',
+  limit: 50,
 });
 
-await store.replyToReview(tokens, appId, reviewId, {
-  body: "Thank you for your feedback! We've fixed this issue in our latest update.",
-});
+const review = await store.getReview(tokens, appId, reviewId);
+
+await store.replyToReview(tokens, appId, reviewId,
+  "Thank you for your feedback! We've fixed this in our latest update."
+);
+
+await store.deleteReviewReply(tokens, appId, reviewId);
+// Note: Google Play throws CapabilityError for deleteReviewReply
 
 const summary = await store.getRatingSummary(tokens, appId, { territory: 'US' });
-// summary.average, summary.totalCount, summary.distribution: { 1: n, 2: n, ... }
+// summary.averageRating, summary.totalRatings, summary.histogram
+
+const ratings = await store.listRatings(tokens, appId, { territory: 'US', limit: 100 });
 ```
 
-## Vitals & crash reporting
+---
+
+## 7. Beta testing (TestFlight / Internal Track)
 
 ```typescript lineNumbers
-const vitals = await store.getVitalsSummary(tokens, appId, {
-  startDate: '2024-01-01',
-  endDate: '2024-01-31',
-  version: '2.1.0',
+// Groups
+const groups = await store.listBetaGroups(tokens, appId);
+const group = await store.getBetaGroup(tokens, appId, groupId);
+const newGroup = await store.createBetaGroup(tokens, appId, {
+  name: 'QA Team',
+  isInternal: true,
 });
-// vitals.crashRate, vitals.anrRate, vitals.sessionStabilityRate
+await store.deleteBetaGroup(tokens, appId, groupId);
 
-const crashes = await store.listCrashClusters(tokens, appId, {
+// Testers
+const testers = await store.listBetaTesters(tokens, appId, groupId);
+
+await store.addBetaTesters(tokens, groupId, [
+  { email: 'tester@example.com', firstName: 'Jane', lastName: 'Doe' },
+]);
+await store.removeBetaTesters(tokens, groupId, ['tester-id']);
+
+// Build assignment
+await store.assignBuildToBetaGroup(tokens, appId, groupId, buildId);
+await store.removeBuildFromBetaGroup(tokens, appId, groupId, buildId);
+```
+
+---
+
+## 8. Vitals & crash reporting
+
+```typescript lineNumbers
+// Summary across all metrics
+const vitals = await store.getVitalsSummary(tokens, appId, {
   version: '2.1.0',
-  limit: 10,
+  startDate: new Date('2025-01-01'),
+  endDate: new Date('2025-01-31'),
+});
+// vitals.metrics.crashRate, vitals.metrics.anrRate, vitals.metrics.launchTime
+
+// Detailed metric with data points
+const metric = await store.getVitalMetric(tokens, appId, 'crash_rate', {
+  granularity: 'daily',
+});
+// metric.dataPoints: [{ timestamp, value }]
+
+// Crash clusters
+const crashes = await store.listCrashClusters(tokens, appId, { version: '2.1.0', limit: 10 });
+const cluster = await store.getCrashCluster(tokens, appId, clusterId);
+
+// ANR clusters (Android only — Apple returns empty array)
+const anrs = await store.listAnrClusters(tokens, appId, { limit: 10 });
+```
+
+**Available `VitalMetricType` values:** `crash_rate`, `anr_rate`, `excessive_wakeups`, `stuck_background_worker`, `launch_time`, `render_time`, `permission_denial_rate`, `battery_drain`, `memory_usage`, `disk_usage`, `hang_rate`, `scroll_hitch_rate`, `disk_writes`
+
+---
+
+## 9. Binary uploads
+
+See [Builds & artifacts → Binary uploads](#binary-uploads) above.
+
+---
+
+## 10. App Recovery (Google Play only)
+
+Remotely remediate issues for users on affected app versions. Apple throws `CapabilityError` for all recovery methods.
+
+```typescript lineNumbers
+// List existing recovery actions
+const actions = await store.listAppRecoveryActions(tokens, appId, { versionCode: '42' });
+
+// Create a new recovery action (DRAFT status)
+const action = await store.createAppRecoveryAction(tokens, appId, {
+  versionCodes: ['40', '41'],
+  remediationType: 'REMOTE_IN_APP_UPDATE', // or 'FORCE_CRASH'
+});
+
+// Deploy a draft recovery
+await store.deployAppRecoveryAction(tokens, appId, action.appRecoveryId);
+
+// Cancel a recovery
+await store.cancelAppRecoveryAction(tokens, appId, action.appRecoveryId);
+
+// Expand targeting
+await store.addAppRecoveryTargeting(tokens, appId, action.appRecoveryId, {
+  versionCodes: ['42'],
+  regions: { includeList: ['US', 'CA'] },
 });
 ```
+
+---
+
+## 11. Phased releases
+
+Control gradual rollout of app versions.
+
+```typescript lineNumbers
+// Enable phased release for a version
+const phased = await store.createPhasedRelease(tokens, appId, {
+  versionId: 'version-uuid',     // Apple: version UUID, Google: 'track:versionCode'
+  rolloutPercentage: 1,          // Google only — Apple uses fixed 7-day schedule
+});
+
+// Check current state
+const current = await store.getPhasedRelease(tokens, appId, versionId);
+
+// Pause / resume / complete
+await store.updatePhasedRelease(tokens, appId, phasedId, { state: 'paused' });
+await store.updatePhasedRelease(tokens, appId, phasedId, { state: 'active' });
+await store.updatePhasedRelease(tokens, appId, phasedId, { state: 'complete' });
+
+// Google only: set exact percentage
+await store.updatePhasedRelease(tokens, appId, phasedId, { rolloutPercentage: 50 });
+
+// Cancel a planned phased release
+await store.deletePhasedRelease(tokens, appId, phasedId);
+```
+
+**Platform differences:**
+
+| Behavior | Apple | Google Play |
+|----------|-------|-------------|
+| Rollout schedule | Fixed 7 days (1%→2%→5%→10%→20%→50%→100%) | Manual — set any percentage |
+| Custom percentage | ✗ Ignored | ✓ `rolloutPercentage` |
+| `currentDayNumber` | ✓ (0–7) | ✗ `undefined` |
+
+---
+
+## 12. Manual release requests
+
+Trigger an immediate release for a version pending developer approval.
+
+```typescript lineNumbers
+const request = await store.createReleaseRequest(tokens, appId, versionId);
+// { id, versionId, requestedAt: Date }
+```
+
+Apple: Releases a "Pending Developer Release" version — **irreversible**.
+Google Play: Commits the production track with status `completed`.

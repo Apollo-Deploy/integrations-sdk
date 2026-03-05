@@ -116,6 +116,45 @@ hub.onEvent('apple', (event) => {
 
 ---
 
+## Architecture
+
+The Apple adapter's `app-store` capability is split into **domain-specific modules** composed at initialization. Each module is a factory that returns a `Pick<AppStoreCapability, ...>` partial:
+
+```
+adapter-apple/src/capabilities/
+├── _context.ts          # AppleContext, JWT auth, API helpers
+├── apps.ts              # listApps, getApp
+├── builds.ts            # listBuilds, getBuild, artifacts, uploadBinary
+├── releases.ts          # releases, tracks, versions, publishing
+├── reviews.ts           # reviews, ratings
+├── beta.ts              # TestFlight groups, testers, build assignment
+├── vitals.ts            # crash clusters, ANR, performance metrics
+├── recovery.ts          # App Recovery (throws — Google Play only)
+├── phased-releases.ts   # phased release lifecycle
+└── index.ts             # composes all modules into AppStoreCapability
+```
+
+The barrel `index.ts` creates a shared `AppleContext` (JWT generation, authenticated fetch helper, cursor extraction) and spreads each module's methods into a single `AppStoreCapability`:
+
+```typescript
+export function createAppleAppStore(config: AppleAdapterConfig): AppStoreCapability {
+  const ctx = createAppleContext(config);
+
+  return {
+    ...createAppleApps(ctx),
+    ...createAppleBuilds(ctx),
+    ...createAppleReleases(ctx),
+    ...createAppleReviews(ctx),
+    ...createAppleBeta(ctx),
+    ...createAppleVitals(ctx),
+    ...createAppleRecovery(),       // all methods throw CapabilityError
+    ...createApplePhasedReleases(ctx),
+  };
+}
+```
+
+---
+
 ## Authentication
 
 App Store Connect uses **JSON Web Tokens (JWT)** signed with ES256 (ECDSA + SHA-256). A new JWT is generated automatically when an existing token is within 60 seconds of expiry.
@@ -176,6 +215,8 @@ const store = hub.getAdapter('apple').appStore!;
 
 ### App management
 
+<small>`capabilities/apps.ts`</small>
+
 #### `listApps(tokens)`
 
 List all apps in your App Store Connect account.
@@ -198,6 +239,8 @@ const app = await store.getApp(tokens, '1234567890');
 
 ### Build management
 
+<small>`capabilities/builds.ts`</small>
+
 #### `listBuilds(tokens, appId, opts?)`
 
 List processed builds for an app.
@@ -205,8 +248,8 @@ List processed builds for an app.
 ```typescript
 const { items } = await store.listBuilds(tokens, '1234567890', {
   limit: 20,
-  status: 'valid',    // 'processing' | 'failed' | 'invalid' | 'valid'
-  version: '2.4.1',  // Filter by version string
+  status: 'valid',    // 'processing' | 'valid' | 'invalid' | 'expired'
+  version: '2.4.1',   // Filter by version string
 });
 
 // items[0]:
@@ -217,7 +260,7 @@ const { items } = await store.listBuilds(tokens, '1234567890', {
 //   buildNumber: '42',
 //   status: 'valid',
 //   uploadedAt: Date,
-//   platform: 'IOS',
+//   platform: 'ios',
 // }
 ```
 
@@ -233,7 +276,7 @@ List dSYM files and other artifacts associated with a build (via BuildBundles).
 
 ```typescript
 const artifacts = await store.listBuildArtifacts(tokens, '1234567890', 'build-uuid');
-// [{ id, buildId, type: 'dsym', name, size, downloadUrl? }]
+// [{ id, buildId, type: 'dsym', fileName, size, downloadable }]
 ```
 
 #### `getArtifactDownloadUrl(tokens, appId, buildId, artifactId)`
@@ -246,9 +289,33 @@ const { url, expiresAt } = await store.getArtifactDownloadUrl(
 );
 ```
 
+#### `uploadBinary(tokens, appId, file, opts?)`
+
+Upload a binary artifact to the store.
+
+<Callout type="warn">
+App Store Connect does not have a REST API endpoint for IPA uploads. This method throws a `CapabilityError` with the exact `xcrun altool` CLI command you should use instead. Use Xcode or Transporter for IPA uploads.
+</Callout>
+
+```typescript
+// Apple IPA uploads are not supported via REST — this will throw with guidance:
+try {
+  await store.uploadBinary(tokens, '1234567890', ipaFile, {
+    fileType: 'ipa',
+    version: '2.4.1',
+    buildNumber: '42',
+    applePlatform: 'IOS',
+  });
+} catch (err) {
+  // CapabilityError with xcrun altool command
+}
+```
+
 ---
 
 ### Release management
+
+<small>`capabilities/releases.ts`</small>
 
 #### `listReleases(tokens, appId, opts?)`
 
@@ -257,18 +324,8 @@ List App Store versions.
 ```typescript
 const { items } = await store.listReleases(tokens, '1234567890', {
   limit: 10,
-  status: 'ready_for_review',  // Filter by App Store state
+  status: 'in_review',  // Filter by normalized status
 });
-
-// items[0]:
-// {
-//   id: 'version-uuid',
-//   appId: '1234567890',
-//   version: '2.4.0',
-//   status: 'ready_for_review',
-//   releaseNotes: [...],
-//   createdAt: Date,
-// }
 ```
 
 **Release status values:**
@@ -276,12 +333,13 @@ const { items } = await store.listReleases(tokens, '1234567890', {
 | Status | Description |
 |--------|-------------|
 | `draft` | Version created but not submitted |
-| `prepare_for_submission` | Completing submission requirements |
-| `waiting_for_review` | Submitted and queued for review |
 | `in_review` | Currently being reviewed |
-| `pending_developer_release` | Approved and awaiting release |
-| `ready_for_sale` | Live in the App Store |
-| `removed_from_sale` | Removed by developer |
+| `pending_release` | Approved and awaiting release |
+| `rolling_out` | Live with phased release active |
+| `completed` | Fully released |
+| `halted` | Release paused |
+| `rejected` | Review rejection |
+| `superseded` | Replaced by a newer version |
 
 #### `getRelease(tokens, appId, releaseId)`
 
@@ -292,6 +350,8 @@ const release = await store.getRelease(tokens, '1234567890', 'version-uuid');
 ---
 
 ### Track and version management
+
+<small>`capabilities/releases.ts`</small>
 
 #### `listTracks(tokens, appId)`
 
@@ -305,6 +365,12 @@ const tracks = await store.listTracks(tokens, '1234567890');
 // ]
 ```
 
+#### `getTrack(tokens, appId, trackId)`
+
+```typescript
+const track = await store.getTrack(tokens, '1234567890', 'app_store');
+```
+
 #### `updateTrack(tokens, appId, trackId, update)`
 
 Control phased releases on the App Store track.
@@ -312,23 +378,36 @@ Control phased releases on the App Store track.
 ```typescript
 // Complete a phased rollout (release to 100%)
 await store.updateTrack(tokens, '1234567890', 'app_store', {
-  completeRollout: true
+  completeRollout: true,
 });
 
 // Pause a phased rollout
-await store.updateTrack(tokens, '1234567890', 'app_store', {
-  halt: true
-});
+await store.updateTrack(tokens, '1234567890', 'app_store', { halt: true });
 
 // Resume a paused rollout
-await store.updateTrack(tokens, '1234567890', 'app_store', {
-  resume: true
-});
+await store.updateTrack(tokens, '1234567890', 'app_store', { resume: true });
+```
+
+#### `listVersions(tokens, appId)`
+
+List all App Store versions (version strings and their states).
+
+```typescript
+const versions = await store.listVersions(tokens, '1234567890');
+// [{ id, appId, versionString: '2.4.1', state: 'READY_FOR_SALE', platform: 'ios', createdAt }]
+```
+
+#### `getVersion(tokens, appId, versionId)`
+
+```typescript
+const version = await store.getVersion(tokens, '1234567890', 'version-uuid');
 ```
 
 ---
 
 ### Publishing
+
+<small>`capabilities/releases.ts`</small>
 
 #### `submitForReview(tokens, appId, request)`
 
@@ -339,19 +418,12 @@ const result = await store.submitForReview(tokens, '1234567890', {
   versionId: 'version-uuid',
   phasedRelease: true,  // Enable phased release after approval
 });
-
-// result:
-// {
-//   success: true,
-//   status: 'in_review',
-//   message: 'Submitted for App Review',
-//   releaseId: 'version-uuid'
-// }
+// { success: true, status: 'in_review', message: '...', releaseId: 'version-uuid' }
 ```
 
 #### `releaseToTrack(tokens, appId, request)`
 
-Release an approved build that is in `pending_developer_release` state.
+Release an approved build in `pending_developer_release` state.
 
 ```typescript
 const result = await store.releaseToTrack(tokens, '1234567890', {
@@ -365,15 +437,8 @@ const result = await store.releaseToTrack(tokens, '1234567890', {
 Control phased release rollout on an individual version.
 
 ```typescript
-// Complete rollout (100% of users)
-await store.updateRollout(tokens, '1234567890', 'version-uuid', {
-  completeRollout: true
-});
-
-// Pause rollout
+await store.updateRollout(tokens, '1234567890', 'version-uuid', { completeRollout: true });
 await store.updateRollout(tokens, '1234567890', 'version-uuid', { pause: true });
-
-// Resume paused rollout
 await store.updateRollout(tokens, '1234567890', 'version-uuid', { resume: true });
 ```
 
@@ -387,7 +452,67 @@ await store.haltRelease(tokens, '1234567890', 'version-uuid', 'Critical crash de
 
 ---
 
+### Phased releases
+
+<small>`capabilities/phased-releases.ts`</small>
+
+Apple uses a **fixed 7-day schedule** for phased releases: 1% → 2% → 5% → 10% → 20% → 50% → 100%.
+
+#### `createPhasedRelease(tokens, appId, request)`
+
+Enable phased release for an App Store version. Creates the resource in `inactive` state — the schedule starts automatically when the version goes live.
+
+```typescript
+const phased = await store.createPhasedRelease(tokens, '1234567890', {
+  versionId: 'version-uuid',
+});
+// { id, versionId, state: 'inactive', rolloutPercentage: 0 }
+```
+
+#### `getPhasedRelease(tokens, appId, versionId)`
+
+```typescript
+const phased = await store.getPhasedRelease(tokens, '1234567890', 'version-uuid');
+// { id, versionId, state: 'active', currentDayNumber: 3, rolloutPercentage: 10 }
+```
+
+#### `updatePhasedRelease(tokens, appId, phasedReleaseId, update)`
+
+Pause, resume, or complete a phased release.
+
+```typescript
+// Pause the rollout
+await store.updatePhasedRelease(tokens, '1234567890', 'phased-id', { state: 'paused' });
+
+// Resume
+await store.updatePhasedRelease(tokens, '1234567890', 'phased-id', { state: 'active' });
+
+// Complete — release to 100% immediately
+await store.updatePhasedRelease(tokens, '1234567890', 'phased-id', { state: 'complete' });
+```
+
+#### `deletePhasedRelease(tokens, appId, phasedReleaseId)`
+
+Cancel a planned phased release that has not started (state must be `inactive`).
+
+```typescript
+await store.deletePhasedRelease(tokens, '1234567890', 'phased-id');
+```
+
+#### `createReleaseRequest(tokens, appId, versionId)`
+
+Manually release a version in "Pending Developer Release" state. **Irreversible.**
+
+```typescript
+const request = await store.createReleaseRequest(tokens, '1234567890', 'version-uuid');
+// { id, versionId, requestedAt: Date }
+```
+
+---
+
 ### Reviews and ratings
+
+<small>`capabilities/reviews.ts`</small>
 
 #### `listReviews(tokens, appId, opts?)`
 
@@ -396,20 +521,35 @@ Fetch customer reviews from the App Store.
 ```typescript
 const { items, cursor } = await store.listReviews(tokens, '1234567890', {
   limit: 20,
-  sortBy: 'date',         // 'date' | 'rating'
+  sortBy: 'date',         // 'date' | 'rating' | 'helpfulness'
   sortOrder: 'desc',
-  territory: 'USA',       // Optional: filter by storefront
-  rating: 1,             // Optional: filter by star rating (1-5)
+  territory: 'USA',
 });
+```
 
-// items[0]:
-// {
-//   id, title, body,
-//   rating: 2,
-//   author: 'JohnD',
-//   territory: 'USA',
-//   createdAt: Date
-// }
+#### `getReview(tokens, appId, reviewId)`
+
+```typescript
+const review = await store.getReview(tokens, '1234567890', 'review-uuid');
+```
+
+#### `replyToReview(tokens, appId, reviewId, body)`
+
+Post a developer response to a customer review.
+
+```typescript
+await store.replyToReview(
+  tokens, '1234567890', 'review-uuid',
+  "Thank you for your feedback! We've addressed this in the latest update."
+);
+```
+
+#### `deleteReviewReply(tokens, appId, reviewId)`
+
+Remove a developer response from a review.
+
+```typescript
+await store.deleteReviewReply(tokens, '1234567890', 'review-uuid');
 ```
 
 #### `getRatingSummary(tokens, appId, opts?)`
@@ -419,105 +559,143 @@ Get aggregate rating data.
 ```typescript
 const summary = await store.getRatingSummary(tokens, '1234567890');
 // {
-//   average: 4.6,
-//   totalCount: 12453,
-//   distribution: { 1: 123, 2: 89, 3: 234, 4: 1205, 5: 10802 }
+//   averageRating: 4.6,
+//   totalRatings: 12453,
+//   histogram: { oneStar: 123, twoStar: 89, threeStar: 234, fourStar: 1205, fiveStar: 10802 }
 // }
 ```
 
-#### `replyToReview(tokens, appId, reviewId, body)`
+#### `listRatings(tokens, appId, opts?)`
 
-Post a developer response to a customer review.
+List individual rating entries with filtering.
 
 ```typescript
-await store.replyToReview(
-  tokens,
-  '1234567890',
-  'review-uuid',
-  "Thank you for your feedback! We've addressed this in the latest update."
-);
+const { items } = await store.listRatings(tokens, '1234567890', {
+  territory: 'USA',
+  appVersion: '2.4.1',
+  limit: 50,
+});
 ```
 
 ---
 
 ### TestFlight (Beta testing)
 
-#### `listBetaGroups(tokens, appId)`
+<small>`capabilities/beta.ts`</small>
 
-List all TestFlight beta groups.
+#### `listBetaGroups(tokens, appId)`
 
 ```typescript
 const groups = await store.listBetaGroups(tokens, '1234567890');
-// [{ id, appId, name, isInternal, feedbackEnabled, testerCount }]
+// [{ id, appId, name, isInternal, testerCount, publicLinkEnabled }]
 ```
 
-#### `getBetaGroup(tokens, appId, groupId)`
+#### `getBetaGroup(tokens, appId, groupId)` / `createBetaGroup(tokens, appId, input)` / `deleteBetaGroup(tokens, appId, groupId)`
 
 ```typescript
 const group = await store.getBetaGroup(tokens, '1234567890', 'group-uuid');
-```
 
-#### `createBetaGroup(tokens, appId, input)`
-
-```typescript
-const group = await store.createBetaGroup(tokens, '1234567890', {
+const newGroup = await store.createBetaGroup(tokens, '1234567890', {
   name: 'QA Team',
   isInternal: true,
-  feedbackEnabled: true,
+  publicLinkEnabled: false,
 });
+
+await store.deleteBetaGroup(tokens, '1234567890', 'group-uuid');
 ```
 
-#### `listBetaTesters(tokens, appId, groupId?, opts?)`
+#### `listBetaTesters(tokens, appId, groupId, opts?)`
 
 ```typescript
 const { items } = await store.listBetaTesters(tokens, '1234567890', 'group-uuid');
 // [{ id, email, firstName, lastName, status }]
 ```
 
-#### `addBetaTesters(tokens, appId, groupId, testers)`
+#### `addBetaTesters(tokens, groupId, testers)` / `removeBetaTesters(tokens, groupId, testerIds)`
 
 ```typescript
-await store.addBetaTesters(tokens, '1234567890', 'group-uuid', [
+await store.addBetaTesters(tokens, 'group-uuid', [
   { email: 'qa@yourcompany.com', firstName: 'QA', lastName: 'Tester' },
 ]);
+
+await store.removeBetaTesters(tokens, 'group-uuid', ['tester-id']);
 ```
 
-#### `removeBetaTesters(tokens, appId, groupId, testerIds)`
+#### `assignBuildToBetaGroup(tokens, appId, groupId, buildId)` / `removeBuildFromBetaGroup(...)`
+
+Assign or remove a build from a TestFlight beta group.
 
 ```typescript
-await store.removeBetaTesters(tokens, '1234567890', 'group-uuid', ['tester-id']);
+await store.assignBuildToBetaGroup(tokens, '1234567890', 'group-uuid', 'build-uuid');
+await store.removeBuildFromBetaGroup(tokens, '1234567890', 'group-uuid', 'build-uuid');
 ```
 
 ---
 
 ### App Vitals
 
+<small>`capabilities/vitals.ts`</small>
+
 #### `getVitalsSummary(tokens, appId, opts?)`
 
 Get performance metrics from App Store Connect Metrics.
 
 ```typescript
-const vitals = await store.getVitalsSummary(tokens, '1234567890', {
-  version: '2.4.0',
-  deviceType: 'iPhone',
-});
+const vitals = await store.getVitalsSummary(tokens, '1234567890', { version: '2.4.0' });
 // {
-//   metrics: [
-//     { type: 'crash_rate', value: 0.012, unit: '%', delta: -0.003 },
-//     { type: 'launch_time', value: 320, unit: 'ms', ... }
-//   ]
+//   appId, platform: 'ios',
+//   period: { start, end },
+//   metrics: {
+//     crashRate: { value, unit, status, trend },
+//     launchTime: { ... },
+//     memoryUsage: { ... },
+//     diskWrites: { ... },
+//   }
 // }
 ```
 
-#### `listCrashClusters(tokens, appId, opts?)`
+#### `getVitalMetric(tokens, appId, metric, opts?)`
+
+Get detailed data points for a single metric.
+
+```typescript
+const metric = await store.getVitalMetric(tokens, '1234567890', 'crash_rate', {
+  startDate: new Date('2025-01-01'),
+  endDate: new Date('2025-01-31'),
+  granularity: 'daily',
+});
+// { metric: 'crash_rate', dataPoints: [{ timestamp, value }], peerComparison }
+```
+
+#### `listCrashClusters(tokens, appId, opts?)` / `getCrashCluster(tokens, appId, clusterId)`
 
 ```typescript
 const { items } = await store.listCrashClusters(tokens, '1234567890', {
   version: '2.4.0',
   limit: 10,
 });
-// [{ id, signature, count, impactedDevices, latestOsVersion, ... }]
+// [{ id, title, exceptionType, affectedUsers, eventCount, stackTrace, resolved }]
+
+const cluster = await store.getCrashCluster(tokens, '1234567890', 'cluster-id');
 ```
+
+#### `listAnrClusters(tokens, appId, opts?)`
+
+<Callout type="info">
+ANR (Application Not Responding) is an Android-specific concept. On Apple, this always returns an empty array.
+</Callout>
+
+---
+
+### App Recovery
+
+<small>`capabilities/recovery.ts`</small>
+
+<Callout type="warn">
+App Recovery is a **Google Play–only feature**. All recovery methods on the Apple adapter throw `CapabilityError`. See the [Google Play adapter](/docs/adapters/google-play#app-recovery) for the full implementation.
+</Callout>
+
+Methods: `listAppRecoveryActions`, `createAppRecoveryAction`, `deployAppRecoveryAction`, `cancelAppRecoveryAction`, `addAppRecoveryTargeting` — all throw `CapabilityError`.
 
 ---
 
@@ -540,6 +718,8 @@ const { items } = await store.listCrashClusters(tokens, '1234567890', {
 | Rate limited (429) | `CapabilityError` | Yes |
 | Private key signing failure | `OAuthError` | No (check key format) |
 | Phased release not found | `CapabilityError` | No |
+| App Recovery method called | `CapabilityError` | No — Google Play only |
+| IPA upload attempted via REST | `CapabilityError` | No — use Xcode/Transporter |
 | dSYMs not yet available | Silently skipped | N/A |
 
 ---
@@ -548,10 +728,16 @@ const { items } = await store.listCrashClusters(tokens, '1234567890', {
 
 **App Store Connect API keys have roles:** Choose the appropriate role. `Customer Support` can respond to reviews. `Developer` can manage builds and testing. `Admin` has full access.
 
-**Phased release requires a prior setup:** You can only control a phased release if `appStoreVersionPhasedRelease` was set up during the initial version creation. If it doesn't exist, `updateRollout` / `updateTrack` will throw a `CapabilityError`.
+**Phased release requires prior setup:** You can only control a phased release if `appStoreVersionPhasedRelease` was set up during the initial version creation. Use `createPhasedRelease` to set it up before submitting for review.
 
 **JWT expiry limit:** Apple enforces a maximum JWT lifetime of **20 minutes** (`exp - iat ≤ 1200`). The adapter generates fresh JWTs with this maximum.
 
 **`listApps` limitation:** The Apps endpoint returns all apps associated with your API key's team. If your key is scoped to a specific app, `listApps` may return only that app.
 
 **Reviews are per-territory:** `listReviews` returns reviews from all territories by default. Use the `territory` parameter to filter to a specific App Store storefront (e.g. `'GBR'`, `'USA'`, `'JPN'`).
+
+**IPA uploads require the CLI:** There is no REST endpoint for uploading IPA binaries. Use `xcrun altool --upload-app` or the Transporter app. The `uploadBinary` method will throw a `CapabilityError` with the exact command to run.
+
+**App Recovery is unsupported:** App Recovery is a Google Play–only feature. All five recovery methods throw `CapabilityError` on the Apple adapter.
+
+**Phased release day schedule:** Apple's 7-day phased rollout follows a fixed schedule (1% → 2% → 5% → 10% → 20% → 50% → 100%). You cannot set a custom percentage — use `updatePhasedRelease` to pause/resume/complete only.
