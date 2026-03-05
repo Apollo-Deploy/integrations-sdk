@@ -1,8 +1,24 @@
 import { defineAdapter } from '@apollo-deploy/integrations';
 import { createGooglePlayOAuth } from './oauth.js';
 import { createGooglePlayWebhook } from './webhook.js';
-import { createGooglePlayAppStore } from './capabilities/app-store.js';
+import { createGooglePlayAppStore } from './capabilities/index.js';
 import type { GooglePlayAdapterConfig } from './types.js';
+import type { AdapterAuthConfig } from '@apollo-deploy/integrations';
+
+const auth: AdapterAuthConfig = {
+  method: 'api_key',
+  setupFlow: 'credential_form',
+  credentialInputs: [
+    {
+      key: 'serviceAccountJson',
+      label: 'Service Account JSON',
+      type: 'textarea',
+      required: true,
+      placeholder: '{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}',
+      helpText: 'Paste the full JSON key file for a Google Cloud service account with Google Play Developer API access.',
+    },
+  ],
+};
 
 export const createGooglePlayAdapter = defineAdapter<GooglePlayAdapterConfig>({
   id: 'google-play',
@@ -13,6 +29,7 @@ export const createGooglePlayAdapter = defineAdapter<GooglePlayAdapterConfig>({
     dateAdded: '2024-06-15',
     websiteUrl: 'https://play.google.com/console',
     docsUrl: 'https://developers.google.com/android-publisher',
+    auth,
   },
   capabilities: ['app-store'] as const,
 
