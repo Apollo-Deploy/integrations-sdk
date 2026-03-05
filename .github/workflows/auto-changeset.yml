@@ -1,0 +1,148 @@
+name: Auto Changeset
+
+# Automatically generates a Changesets entry from the pushed commit message,
+# then pushes it so that the existing release.yml can create the Version PR
+# and publish to npm.
+#
+# Prerequisites:
+#   - Add a Personal Access Token (PAT) as the secret GITHUB_PAT so that the
+#     commit pushed by this action re-triggers other workflows (e.g. release.yml).
+#     A plain GITHUB_TOKEN push is silently ignored by GitHub Actions.
+#     Minimum required scopes: repo (or contents: write for fine-grained PATs).
+#
+# Conventional commit → bump mapping:
+#   feat!: / BREAKING CHANGE  → major
+#   feat:                     → minor
+#   fix: / perf: / refactor:
+#   / docs: / chore: / etc.   → patch
+#
+# Commits that start with "chore: version packages" (release.yml) or
+# "chore: add auto-generated changeset" (this workflow) are skipped to
+# prevent infinite loops.
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: auto-changeset-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  auto-changeset:
+    name: Generate changeset from commit
+    runs-on: ubuntu-latest
+
+    # Skip commits produced by this workflow or by the release workflow.
+    if: |
+      !startsWith(github.event.head_commit.message, 'chore: version packages') &&
+      !startsWith(github.event.head_commit.message, 'chore: add auto-generated changeset')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          # Use a PAT so the pushed commit re-triggers release.yml.
+          # Falls back to GITHUB_TOKEN (won't trigger other workflows).
+          token: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+
+      # ── Step 1: Determine bump type + affected packages ──────────────────────
+
+      - name: Detect bump type and changed packages
+        id: detect
+        shell: bash
+        run: |
+          # Read full commit message (handles multi-line bodies)
+          COMMIT_MSG="$(git log -1 --pretty=%B)"
+          COMMIT_SUBJECT="$(git log -1 --pretty=%s)"
+          echo "Subject : $COMMIT_SUBJECT"
+
+          # ── Bump type from conventional commit prefix ──────────────────────
+          if echo "$COMMIT_MSG" | grep -qE '^(feat|fix|refactor|perf|chore|build)(\(.+\))?!|^BREAKING[ -]CHANGE'; then
+            BUMP="major"
+          elif echo "$COMMIT_MSG" | grep -qE '^feat(\(.+\))?:'; then
+            BUMP="minor"
+          else
+            BUMP="patch"
+          fi
+          echo "Bump     : $BUMP"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+
+          # ── Identify which packages have source changes ────────────────────
+          CHANGED="$(git diff --name-only HEAD~1 HEAD)"
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          FRONTMATTER=""
+
+          # Helper: append to FRONTMATTER if any changed file is under $prefix
+          check_pkg() {
+            local prefix="$1" name="$2"
+            if echo "$CHANGED" | grep -q "^${prefix}"; then
+              FRONTMATTER="${FRONTMATTER}\"${name}\": ${BUMP}"$'\n'
+            fi
+          }
+
+          check_pkg "packages/integrations/"        "@apollo-deploy/integrations"
+          check_pkg "packages/adapter-apple/"       "@apollo-deploy/adapter-apple"
+          check_pkg "packages/adapter-discord/"     "@apollo-deploy/adapter-discord"
+          check_pkg "packages/adapter-github/"      "@apollo-deploy/adapter-github"
+          check_pkg "packages/adapter-gitlab/"      "@apollo-deploy/adapter-gitlab"
+          check_pkg "packages/adapter-google-play/" "@apollo-deploy/adapter-google-play"
+          check_pkg "packages/adapter-jira/"        "@apollo-deploy/adapter-jira"
+          check_pkg "packages/adapter-linear/"      "@apollo-deploy/adapter-linear"
+          check_pkg "packages/adapter-slack/"       "@apollo-deploy/adapter-slack"
+
+          if [ -z "$FRONTMATTER" ]; then
+            echo "No package source changes detected — skipping changeset creation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            printf '%s' "$FRONTMATTER" > /tmp/frontmatter.txt
+            echo "Affected packages:"
+            cat /tmp/frontmatter.txt
+          fi
+
+      # ── Step 2: Write the .changeset/*.md file ───────────────────────────────
+
+      - name: Write changeset file
+        if: steps.detect.outputs.skip != 'true'
+        shell: bash
+        run: |
+          HASH="$(git rev-parse --short HEAD)"
+          FILE=".changeset/auto-${HASH}.md"
+          DESCRIPTION="$(git log -1 --pretty=%s)"
+
+          {
+            printf -- '---\n'
+            cat /tmp/frontmatter.txt
+            printf -- '---\n\n'
+            printf '%s\n' "$DESCRIPTION"
+          } > "$FILE"
+
+          echo "Written $FILE:"
+          cat "$FILE"
+
+      # ── Step 3: Commit and push the changeset file ───────────────────────────
+
+      - name: Commit and push changeset
+        if: steps.detect.outputs.skip != 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add .changeset/
+
+          # Nothing staged → file already existed (duplicate SHA); bail out cleanly.
+          if git diff --cached --quiet; then
+            echo "Changeset already exists for this commit — nothing to push."
+            exit 0
+          fi
+
+          git commit -m "chore: add auto-generated changeset"
+          git push
