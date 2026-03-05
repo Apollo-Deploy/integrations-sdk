@@ -7,7 +7,7 @@ import type {
   PaginationOpts,
   PullRequest,
   Repository,
-} from '../models.js';
+} from '../models/index.js';
 import type { TokenSet } from '../oauth.js';
 
 /**

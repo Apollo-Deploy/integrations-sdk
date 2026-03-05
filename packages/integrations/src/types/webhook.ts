@@ -1,4 +1,4 @@
-import type { IntegrationEvent } from './models.js';
+import type { IntegrationEvent } from './models/index.js';
 
 /**
  * Inbound webhook handler — every adapter provides one.

@@ -22,7 +22,7 @@ export type {
 
 // ── Factory Helper ────────────────────────────────────────────────────────────
 export { defineAdapter } from './define-adapter.js';
-export type { AdapterDefinition } from './define-adapter.js';
+export type { AdapterDefinition, AdapterFactory, AdapterDefinitionInfo } from './define-adapter.js';
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 export {
@@ -40,6 +40,11 @@ export type {
   AdapterCapability,
   AdapterContext,
   AdapterMetadata,
+  AdapterAuthConfig,
+  AuthMethod,
+  SetupFlow,
+  ClientAuthConfig,
+  CredentialInputField,
   TokenMetadata,
   Logger,
 } from './types/adapter.js';
@@ -127,7 +132,39 @@ export type {
   ReleaseToTrackRequest,
   RolloutUpdateRequest,
   PublishResult,
-} from './types/models.js';
+  // Binary upload
+  BinaryFileType,
+  UploadBinaryOpts,
+  UploadBinaryResult,
+  InternalSharingArtifact,
+  // App recovery
+  AppRecoveryStatus,
+  AppRecoveryAction,
+  AppRecoveryTargeting,
+  CreateAppRecoveryRequest,
+  AppRecoveryTargetingRequest,
+  AppRecoveryListOpts,
+  // Phased releases
+  PhasedReleaseState,
+  PhasedRelease,
+  CreatePhasedReleaseRequest,
+  UpdatePhasedReleaseRequest,
+  // Manual release requests
+  ReleaseRequest,
+  // Generated Artifacts / Build Deliverables
+  GeneratedArtifactType,
+  GeneratedArtifact,
+  GeneratedArtifactsPerSigningKey,
+  GeneratedArtifactTargetingInfo,
+  GeneratedArtifactVariant,
+  GeneratedArtifactModule,
+  GeneratedArtifactDescription,
+  GeneratedArtifactAssetSliceSet,
+  GeneratedArtifactsResult,
+  BuildDeliverable,
+  BuildDeliverablesResult,
+  GeneratedArtifactsListOpts,
+} from './types/models/index.js';
 
 // ── Capability Interfaces ────────────────────────────────────────────────────────
 export type { SourceControlCapability } from './types/capabilities/source-control.js';

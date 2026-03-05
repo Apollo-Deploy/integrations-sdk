@@ -5,7 +5,7 @@ import type {
   MessageResult,
   Paginated,
   PaginationOpts,
-} from '../models.js';
+} from '../models/index.js';
 import type { TokenSet } from '../oauth.js';
 
 /**

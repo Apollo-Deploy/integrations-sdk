@@ -58,13 +58,37 @@ export interface AdapterDefinition<TConfig> {
 }
 
 /**
+ * Metadata-only snapshot of an adapter definition.
+ * Available on the factory function as `.definition` — no config required.
+ */
+export interface AdapterDefinitionInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly metadata?: AdapterMetadata;
+  readonly capabilities: readonly AdapterCapability[];
+  readonly tokenMetadata: TokenMetadata;
+}
+
+/**
+ * Factory function returned by `defineAdapter`.
+ * Carries a `.definition` property with the adapter's static metadata.
+ */
+export interface AdapterFactory<TConfig> {
+  (config: TConfig): IntegrationAdapter<TConfig>;
+  /** Static metadata — always available, no config required. */
+  readonly definition: AdapterDefinitionInfo;
+}
+
+/**
  * Create a type-safe adapter factory function from a definition object.
- * Returns a function `(config: TConfig) => IntegrationAdapter`.
+ * Returns a function `(config: TConfig) => IntegrationAdapter` with a
+ * `.definition` property that exposes the adapter's metadata without
+ * needing credentials / config.
  */
 export function defineAdapter<TConfig>(
   definition: AdapterDefinition<TConfig>,
-): (config: TConfig) => IntegrationAdapter<TConfig> {
-  return (config: TConfig): IntegrationAdapter<TConfig> => {
+): AdapterFactory<TConfig> {
+  const factory = (config: TConfig): IntegrationAdapter<TConfig> => {
     const adapter: IntegrationAdapter<TConfig> = {
       id: definition.id,
       name: definition.name,
@@ -110,4 +134,20 @@ export function defineAdapter<TConfig>(
 
     return adapter;
   };
+
+  // Attach static metadata onto the factory function
+  Object.defineProperty(factory, 'definition', {
+    value: Object.freeze({
+      id: definition.id,
+      name: definition.name,
+      metadata: definition.metadata,
+      capabilities: definition.capabilities,
+      tokenMetadata: definition.tokenMetadata,
+    }),
+    writable: false,
+    enumerable: true,
+    configurable: false,
+  });
+
+  return factory as AdapterFactory<TConfig>;
 }

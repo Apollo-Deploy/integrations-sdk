@@ -6,7 +6,7 @@ import type {
   Paginated,
   ProjectRef,
   UpdateIssueInput,
-} from '../models.js';
+} from '../models/index.js';
 import type { TokenSet } from '../oauth.js';
 
 /**

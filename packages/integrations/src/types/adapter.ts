@@ -11,7 +11,7 @@ import type { MessagingCapability } from './capabilities/messaging.js';
 import type { IssueTrackingCapability } from './capabilities/issue-tracking.js';
 import type { AppStoreCapability } from './capabilities/app-store.js';
 import type { CryptoProvider } from '../crypto.js';
-import type { IntegrationEvent } from './models.js';
+import type { IntegrationEvent } from './models/index.js';
 
 /** Minimal logger interface — compatible with Fastify's logger and pino. */
 export interface Logger {
@@ -30,6 +30,101 @@ export interface AdapterContext {
   crypto: CryptoProvider;
   emitEvent: (event: IntegrationEvent) => Promise<void>;
 }
+
+// ─── Auth Method & Setup Flow ────────────────────────────────────────────────
+
+/**
+ * Internal authentication mechanism the adapter uses.
+ *
+ * - `oauth2`          — Standard OAuth 2.0 authorization-code flow.
+ * - `api_key`         — Static API key or personal-access token.
+ * - `webhook_secret`  — Inbound webhook with a shared HMAC secret.
+ * - `basic`           — Username + password (HTTP Basic or equivalent).
+ * - `pat`             — Personal Access Token (provider-issued, not OAuth).
+ * - `none`            — No credentials required (public / unauthenticated APIs).
+ */
+export type AuthMethod = 'oauth2' | 'api_key' | 'webhook_secret' | 'basic' | 'pat' | 'none';
+
+/**
+ * How the client should present the connect/install flow.
+ *
+ * - `oauth_only`           — Single "Authorize" button (no form).
+ * - `credential_form`      — Render a form from `credentialInputs`.
+ * - `oauth_then_configure`  — OAuth button → post-auth configuration step (repo/channel picker).
+ * - `none`                 — One-click install, no credentials needed.
+ */
+export type SetupFlow = 'oauth_only' | 'credential_form' | 'oauth_then_configure' | 'none';
+
+/**
+ * A single credential field the connect UI must render.
+ */
+export interface CredentialInputField {
+  /** Stable field identifier — used as the key when submitting credentials. */
+  key: string;
+  /** User-facing label shown above the input. */
+  label: string;
+  /**
+   * UI control type:
+   * - `text`         — Plain single-line text input.
+   * - `password`     — Masked text input (secrets, tokens).
+   * - `url`          — URL input with validation.
+   * - `select`       — Dropdown; requires `options`.
+   * - `textarea`     — Multi-line text area (JSON configs, keys).
+   */
+  type: 'text' | 'password' | 'url' | 'select' | 'textarea';
+  required: boolean;
+  placeholder?: string;
+  /** Short help copy rendered below the input. */
+  helpText?: string;
+  /** Only for `type: 'select'`. */
+  options?: Array<{ value: string; label: string }>;
+
+  // ── Client-side validation ──────────────────────────────────────────────
+
+  /** Regex pattern the value must match (applied client-side). */
+  pattern?: string;
+  /** Minimum string length. */
+  minLength?: number;
+  /** Maximum string length. */
+  maxLength?: number;
+}
+
+/**
+ * Authentication configuration defined by an adapter.
+ * The hub derives the client-safe `SetupFlow` from this at runtime.
+ */
+export interface AdapterAuthConfig {
+  /** Internal authentication mechanism. */
+  method: AuthMethod;
+  /**
+   * Explicit setup flow override. When omitted the hub auto-derives it:
+   *   method=oauth2 → 'oauth_only',  method=none → 'none',  else → 'credential_form'.
+   */
+  setupFlow?: SetupFlow;
+  /**
+   * Ordered list of credential fields to render in the connect UI.
+   * Omit for pure OAuth flows.
+   */
+  credentialInputs?: CredentialInputField[];
+  /**
+   * OAuth scopes requested during authorization.
+   * Server-only — never serialised to the client.
+   */
+  oauthScopes?: string[];
+}
+
+/**
+ * Client-safe subset of `AdapterAuthConfig`.
+ * Exposed via the listing endpoint — contains only what the UI needs to render.
+ */
+export interface ClientAuthConfig {
+  /** What the UI should render. */
+  setupFlow: SetupFlow;
+  /** Credential fields (only for `credential_form`). */
+  fields?: CredentialInputField[];
+}
+
+// ─── Adapter Metadata ─────────────────────────────────────────────────────────
 
 /**
  * Descriptive metadata about an adapter — used for display, discovery, and auditing.
@@ -61,6 +156,13 @@ export interface AdapterMetadata {
 
   /** Link to the provider's marketing / home page. */
   websiteUrl?: string;
+
+  /**
+   * Authentication method and credential input specification for this integration.
+   * When omitted the hub defaults to `{ method: 'oauth2' }` at runtime,
+   * since all current adapters implement the OAuth handler interface.
+   */
+  auth?: AdapterAuthConfig;
 }
 
 /**

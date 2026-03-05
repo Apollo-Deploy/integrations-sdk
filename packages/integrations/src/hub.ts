@@ -10,13 +10,16 @@
 
 import { UnknownAdapterError } from './errors.js';
 import type {
+  AdapterAuthConfig,
   AdapterCapability,
   AdapterContext,
   AdapterMetadata,
+  ClientAuthConfig,
   IntegrationAdapter,
   Logger,
+  SetupFlow,
 } from './types/adapter.js';
-import type { IntegrationEvent } from './types/models.js';
+import type { IntegrationEvent } from './types/models/index.js';
 import type { CryptoProvider } from './crypto.js';
 
 // ─── Public Types ─────────────────────────────────────────────────────────────
@@ -62,6 +65,11 @@ export interface AdapterInfo {
   capabilities: readonly AdapterCapability[];
   /** Descriptive metadata: icon, description, dateAdded, etc. */
   metadata: AdapterMetadata;
+  /**
+   * Client-safe authentication config.
+   * Contains `setupFlow` and optional `fields` — no scopes or internal details.
+   */
+  auth: ClientAuthConfig;
 }
 
 export interface HubConfig<TAdapters extends Record<string, IntegrationAdapter>> {
@@ -145,14 +153,43 @@ export class IntegrationHub<
   listAdapters(): AdapterInfo[] {
     return Object.entries(this.adapters).map(([key, adapter]) => {
       const a = adapter as IntegrationAdapter;
+      const rawAuth: AdapterAuthConfig = a.metadata?.auth ?? { method: 'oauth2' };
       return {
         key,
         id: a.id,
         name: a.name,
         capabilities: a.capabilities,
         metadata: a.metadata ?? {},
+        auth: IntegrationHub._toClientAuth(rawAuth),
       };
     });
+  }
+
+  /**
+   * Derive the client-safe auth config from the adapter's raw auth config.
+   * Strips `oauthScopes` and auto-derives `setupFlow` when not explicitly set.
+   */
+  private static _toClientAuth(raw: AdapterAuthConfig): ClientAuthConfig {
+    const flow: SetupFlow = raw.setupFlow ?? IntegrationHub._deriveSetupFlow(raw);
+    const result: ClientAuthConfig = { setupFlow: flow };
+    if (raw.credentialInputs && raw.credentialInputs.length > 0) {
+      result.fields = raw.credentialInputs;
+    }
+    return result;
+  }
+
+  /**
+   * Auto-derive `setupFlow` from `method` when the adapter doesn't specify one.
+   */
+  private static _deriveSetupFlow(raw: AdapterAuthConfig): SetupFlow {
+    switch (raw.method) {
+      case 'oauth2':
+        return raw.credentialInputs?.length ? 'oauth_then_configure' : 'oauth_only';
+      case 'none':
+        return 'none';
+      default:
+        return 'credential_form';
+    }
   }
 
   // ── Event Subscriptions ───────────────────────────────────────────────────
