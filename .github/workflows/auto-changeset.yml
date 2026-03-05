@@ -5,7 +5,7 @@ name: Auto Changeset
 # and publish to npm.
 #
 # Prerequisites:
-#   - Add a Personal Access Token (PAT) as the secret GITHUB_PAT so that the
+#   - Add a Personal Access Token (PAT) as the secret GH_PAT so that the
 #     commit pushed by this action re-triggers other workflows (e.g. release.yml).
 #     A plain GITHUB_TOKEN push is silently ignored by GitHub Actions.
 #     Minimum required scopes: repo (or contents: write for fine-grained PATs).
@@ -49,7 +49,7 @@ jobs:
           fetch-depth: 2
           # Use a PAT so the pushed commit re-triggers release.yml.
           # Falls back to GITHUB_TOKEN (won't trigger other workflows).
-          token: ${{ secrets.GITHUB_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       # ── Step 1: Determine bump type + affected packages ──────────────────────
 
