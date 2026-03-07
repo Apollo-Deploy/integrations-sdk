@@ -133,8 +133,11 @@ export interface AdapterMetadata {
   /**
    * URL or data-URI for the provider's logo/icon.
    * Recommended: SVG or 64×64 PNG.
+   *
+   * Can be a single URL used for all themes, or an object with separate
+   * `light` and `dark` variants for theme-aware display.
    */
-  iconUrl?: string;
+  iconUrl?: string | { light: string; dark: string };
 
   /** One-sentence description of what the integration does. */
   description?: string;

@@ -46,6 +46,10 @@ export const createAppleAdapter = defineAdapter<AppleAdapterConfig>({
     description: 'Manage iOS and macOS app submissions, TestFlight builds, and App Store releases.',
     category: 'App Stores',
     dateAdded: '2024-06-01',
+    iconUrl: {
+      light: "https://cdn.apollodeploy.com/integrations/apple_integration_light.svg",
+      dark: "https://cdn.apollodeploy.com/integrations/apple_integration_dark.svg",
+    },
     websiteUrl: 'https://appstoreconnect.apple.com',
     docsUrl: 'https://developer.apple.com/documentation/appstoreconnectapi',
     auth,

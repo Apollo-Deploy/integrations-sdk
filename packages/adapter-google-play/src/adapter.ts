@@ -27,6 +27,10 @@ export const createGooglePlayAdapter = defineAdapter<GooglePlayAdapterConfig>({
     description: 'Manage Android app releases, tracks, and rollouts via the Google Play Developer API.',
     category: 'App Stores',
     dateAdded: '2024-06-15',
+    iconUrl: {
+      light: "https://cdn.apollodeploy.com/integrations/google_play_integration_light.svg",
+      dark: "https://cdn.apollodeploy.com/integrations/google_play_integration_dark.svg",
+    },
     websiteUrl: 'https://play.google.com/console',
     docsUrl: 'https://developers.google.com/android-publisher',
     auth,
