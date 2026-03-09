@@ -35,7 +35,7 @@ export function createAppleContext(config: AppleAdapterConfig): AppleContext {
 
     if (!res.ok) {
       const body = await res.text();
-      throw new CapabilityError('apple', `Apple API ${res.status}: ${body}`, res.status === 429);
+      throw new CapabilityError('apple', `Apple API ${res.status}: ${body}`, res.status === 429 || res.status >= 500);
     }
 
     if (res.status === 204) return null as T;

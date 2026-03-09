@@ -93,11 +93,14 @@ Thrown by capability methods (`sourceControl.*`, `messaging.*`, `issueTracking.*
   }}
 />
 
+All adapters set `retryable: true` for HTTP `429` (rate limit) and `5xx` (server error) responses, and `retryable: false` for `4xx` client errors. Slack additionally classifies its application-level error codes (e.g. `rate_limited`, `internal_error`) as retryable.
+
 ```typescript lineNumbers
 import { CapabilityError } from '@apollo-deploy/integrations';
 
 catch (err) {
   if (err instanceof CapabilityError && err.retryable) {
+    // 429 or 5xx — safe to retry after backoff
     await queue.retryLater(job);
   }
 }

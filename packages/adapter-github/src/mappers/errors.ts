@@ -10,10 +10,14 @@ export function mapGithubError(err: unknown): CapabilityError {
 }
 
 function isRetryable(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'status' in err) {
+    const status = (err as { status: number }).status;
+    if (status === 429 || status >= 500) return true;
+  }
   if (err instanceof Error) {
-    // GitHub 429 / 503 are retryable
     const msg = err.message.toLowerCase();
-    return msg.includes('rate limit') || msg.includes('503') || msg.includes('secondary rate');
+    return msg.includes('rate limit') || msg.includes('secondary rate')
+      || msg.includes('500') || msg.includes('502') || msg.includes('503') || msg.includes('504');
   }
   return false;
 }

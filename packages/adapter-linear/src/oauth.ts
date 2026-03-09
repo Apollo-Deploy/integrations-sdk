@@ -1,46 +1,53 @@
+import * as oauth from 'oauth4webapi';
 import { OAuthError, TokenRefreshError } from '@apollo-deploy/integrations';
 import type { OAuthHandler } from '@apollo-deploy/integrations';
 import type { LinearAdapterConfig } from './types.js';
 
+const AS: oauth.AuthorizationServer = {
+  issuer: 'https://linear.app',
+  authorization_endpoint: 'https://linear.app/oauth/authorize',
+  token_endpoint: 'https://api.linear.app/oauth/token',
+};
+
 export function createLinearOAuth(config: LinearAdapterConfig): OAuthHandler {
+  const client: oauth.Client = { client_id: config.clientId };
+  const clientAuth = oauth.ClientSecretPost(config.clientSecret);
+
   return {
     getAuthorizationUrl({ state, scopes, redirectUri }) {
-      const params = new URLSearchParams({
-        client_id: config.clientId,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        scope: (scopes.length ? scopes : ['read', 'write']).join(','),
-        state,
-        prompt: 'consent',
-      });
-      return `https://linear.app/oauth/authorize?${params.toString()}`;
+      const url = new URL(AS.authorization_endpoint!);
+      url.searchParams.set('client_id', config.clientId);
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('scope', (scopes.length ? scopes : ['read', 'write']).join(','));
+      url.searchParams.set('state', state);
+      url.searchParams.set('prompt', 'consent');
+      return url.toString();
     },
 
-    async exchangeCode({ code, redirectUri }) {
-      const resp = await fetch('https://api.linear.app/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          redirect_uri: redirectUri,
-          code,
-          grant_type: 'authorization_code',
-        }).toString(),
-      });
-      if (!resp.ok) throw new OAuthError('linear', `Code exchange failed: ${resp.status}`);
-      const data = await resp.json() as { access_token: string; token_type: string; expires_in?: number; scope?: string; error?: string };
-      if (data.error) throw new OAuthError('linear', data.error);
-      return {
-        accessToken: data.access_token,
-        scope: data.scope ?? 'read,write',
-        expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined,
-        providerData: {},
-      };
+    async exchangeCode({ code, redirectUri, codeVerifier }) {
+      try {
+        const response = await oauth.authorizationCodeGrantRequest(
+          AS, client, clientAuth,
+          new URLSearchParams({ code }),
+          redirectUri,
+          codeVerifier ?? oauth.nopkce,
+        );
+        const result = await oauth.processAuthorizationCodeResponse(AS, client, response);
+        return {
+          accessToken: result.access_token,
+          scope: result.scope ?? 'read,write',
+          expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000) : undefined,
+          providerData: {},
+        };
+      } catch (err) {
+        if (err instanceof OAuthError) throw err;
+        throw new OAuthError('linear', String(err));
+      }
     },
 
     async refreshToken(_refreshToken) {
-      // Linear uses standard OAuth2 refresh
+      // Linear does not support token refresh
       throw new TokenRefreshError('linear', 'Linear does not support token refresh — re-authorise', false);
     },
 
@@ -51,6 +58,7 @@ export function createLinearOAuth(config: LinearAdapterConfig): OAuthHandler {
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ query }),
       });
+      if (!resp.ok) throw new OAuthError('linear', `Failed to fetch identity: ${resp.status}`);
       const data = await resp.json() as { data?: { viewer: { id: string; name: string; email: string; avatarUrl?: string } } };
       const viewer = data.data?.viewer;
       return {

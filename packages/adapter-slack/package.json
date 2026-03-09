@@ -22,8 +22,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "workspace:*",
-    "@slack/web-api": "^7.3.4"
+    "@apollo-deploy/integrations": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

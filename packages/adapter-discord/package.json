@@ -23,8 +23,7 @@
   },
   "dependencies": {
     "@apollo-deploy/integrations": "workspace:*",
-    "@discordjs/rest": "^2.4.0",
-    "discord-interactions": "^3.4.0"
+    "oauth4webapi": "^3.8.5"
   },
   "devDependencies": {
     "@types/bun": "latest",

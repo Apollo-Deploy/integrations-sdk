@@ -81,6 +81,10 @@ await msg.sendRichMessage(tokens, 'C1234567890', [
 `sendRichMessage` accepts platform-native block structures (`MessageBlock[]`). For portable message formatting, use `sendMessage` with markdown — the adapter converts it to the platform's format.
 </Callout>
 
+## Error handling
+
+All messaging methods throw `CapabilityError` on failure. The `retryable` flag is `true` for HTTP `429` (rate limit) and `5xx` (server error) responses. Slack additionally treats application-level errors like `rate_limited`, `internal_error`, and `request_timeout` as retryable. See the [Slack](/docs/adapters/slack#error-handling) and [Discord](/docs/adapters/discord#error-handling) adapter docs for full error tables.
+
 ## Types
 
 ```typescript

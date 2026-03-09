@@ -49,7 +49,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
       throw new CapabilityError(
         'google-play',
         `Google Play API ${res.status}: ${body}`,
-        res.status === 429,
+        res.status === 429 || res.status >= 500,
       );
     }
 
@@ -81,7 +81,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
       throw new CapabilityError(
         'google-play',
         `Google Play Upload API ${res.status}: ${body}`,
-        res.status === 429,
+        res.status === 429 || res.status >= 500,
       );
     }
 

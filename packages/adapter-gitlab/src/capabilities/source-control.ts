@@ -2,11 +2,16 @@ import { CapabilityError } from '@apollo-deploy/integrations';
 import type { SourceControlCapability, TokenSet, Repository, Branch, PullRequest, Commit } from '@apollo-deploy/integrations';
 import type { GitlabAdapterConfig } from '../types.js';
 
-function glFetch(base: string, token: string, path: string, init?: RequestInit) {
-  return fetch(`${base}/api/v4${path}`, {
+async function glFetch(base: string, token: string, path: string, init?: RequestInit) {
+  const resp = await fetch(`${base}/api/v4${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new CapabilityError('gitlab', `GitLab API ${resp.status}: ${body}`, resp.status === 429 || resp.status >= 500);
+  }
+  return resp;
 }
 
 function mapRepo(p: Record<string, unknown>): Repository {
@@ -26,7 +31,6 @@ export function createGitlabSourceControl(config: GitlabAdapterConfig): SourceCo
   return {
     async listRepositories(tokens: TokenSet, _opts?) {
       const resp = await glFetch(base, tokens.accessToken, '/projects?membership=true&per_page=50');
-      if (!resp.ok) throw new CapabilityError('gitlab', 'listRepositories failed');
       const items = await resp.json() as Array<Record<string, unknown>>;
       return { items: items.map(mapRepo), hasMore: false };
     },
@@ -34,14 +38,12 @@ export function createGitlabSourceControl(config: GitlabAdapterConfig): SourceCo
     async getRepository(tokens: TokenSet, repoId: string): Promise<Repository> {
       const encoded = encodeURIComponent(repoId);
       const resp = await glFetch(base, tokens.accessToken, `/projects/${encoded}`);
-      if (!resp.ok) throw new CapabilityError('gitlab', `getRepository failed: ${resp.status}`);
       return mapRepo(await resp.json() as Record<string, unknown>);
     },
 
     async listBranches(tokens: TokenSet, repoId: string, _opts?) {
       const encoded = encodeURIComponent(repoId);
       const resp = await glFetch(base, tokens.accessToken, `/projects/${encoded}/repository/branches?per_page=50`);
-      if (!resp.ok) throw new CapabilityError('gitlab', 'listBranches failed');
       const items = await resp.json() as Array<Record<string, unknown>>;
       return {
         items: items.map((b): Branch => {
@@ -55,7 +57,6 @@ export function createGitlabSourceControl(config: GitlabAdapterConfig): SourceCo
     async getPullRequest(tokens: TokenSet, repoId: string, prNumber: number): Promise<PullRequest> {
       const encoded = encodeURIComponent(repoId);
       const resp = await glFetch(base, tokens.accessToken, `/projects/${encoded}/merge_requests/${prNumber}`);
-      if (!resp.ok) throw new CapabilityError('gitlab', `getPullRequest failed: ${resp.status}`);
       const mr = await resp.json() as Record<string, unknown>;
       const author = mr['author'] as Record<string, unknown> | undefined;
       return {
@@ -85,13 +86,11 @@ export function createGitlabSourceControl(config: GitlabAdapterConfig): SourceCo
           target_url: input.targetUrl,
         }),
       });
-      if (!resp.ok) throw new CapabilityError('gitlab', `createCommitStatus failed: ${resp.status}`);
     },
 
     async listCommits(tokens: TokenSet, repoId: string, _opts?) {
       const encoded = encodeURIComponent(repoId);
       const resp = await glFetch(base, tokens.accessToken, `/projects/${encoded}/repository/commits?per_page=30`);
-      if (!resp.ok) throw new CapabilityError('gitlab', 'listCommits failed');
       const items = await resp.json() as Array<Record<string, unknown>>;
       return {
         items: items.map((c): Commit => ({

@@ -95,10 +95,11 @@ const commits = await sc.listCommits(tokens, 'owner/repo-name', {
 // commits.items: Commit[]  — commit.sha, commit.message, commit.author, commit.timestamp
 ```
 
-## Types
+## Error handling
 
-```typescript
-interface Repository {
+All source control methods throw `CapabilityError` on failure. The `retryable` flag is `true` for HTTP `429` (rate limit) and `5xx` (server error) responses. GitHub also treats secondary rate limits (`403` with `X-RateLimit-Remaining: 0`) as retryable. See the [GitHub](/docs/adapters/github#error-handling) and [GitLab](/docs/adapters/gitlab#error-handling) adapter docs for full error tables.
+
+## Types
   id: string;
   name: string;
   fullName: string;       // 'owner/name'

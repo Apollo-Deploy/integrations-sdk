@@ -349,3 +349,9 @@ const request = await store.createReleaseRequest(tokens, appId, versionId);
 
 Apple: Releases a "Pending Developer Release" version — **irreversible**.
 Google Play: Commits the production track with status `completed`.
+
+---
+
+## Error handling
+
+All app store methods throw `CapabilityError` on failure. The `retryable` flag is `true` for HTTP `429` (rate limit) and `5xx` (server error) responses. See the [Apple](/docs/adapters/apple#error-handling) and [Google Play](/docs/adapters/google-play#error-handling) adapter docs for full error tables.

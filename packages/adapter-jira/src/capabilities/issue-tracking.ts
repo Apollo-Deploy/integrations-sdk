@@ -30,7 +30,7 @@ export function createJiraIssueTracking(_config: JiraAdapterConfig): IssueTracki
     const resp = await fetch(url, { headers: headers(token) });
     if (!resp.ok) {
       const err = await resp.text();
-      throw new CapabilityError('jira', `GET ${url} failed ${resp.status}: ${err}`, resp.status === 429);
+      throw new CapabilityError('jira', `GET ${url} failed ${resp.status}: ${err}`, resp.status === 429 || resp.status >= 500);
     }
     return resp.json() as Promise<T>;
   }
@@ -73,7 +73,7 @@ export function createJiraIssueTracking(_config: JiraAdapterConfig): IssueTracki
       });
       if (!resp.ok) {
         const err = await resp.text();
-        throw new CapabilityError('jira', `createIssue failed ${resp.status}: ${err}`, false);
+        throw new CapabilityError('jira', `createIssue failed ${resp.status}: ${err}`, resp.status === 429 || resp.status >= 500);
       }
       const created = await resp.json() as { key: string; id: string };
       return this.getIssue(tokens, created.key);
@@ -90,7 +90,7 @@ export function createJiraIssueTracking(_config: JiraAdapterConfig): IssueTracki
         body: JSON.stringify({ fields }),
       });
       if (!resp.ok && resp.status !== 204) {
-        throw new CapabilityError('jira', `updateIssue failed ${resp.status}`, false);
+        throw new CapabilityError('jira', `updateIssue failed ${resp.status}`, resp.status === 429 || resp.status >= 500);
       }
       return this.getIssue(tokens, issueId);
     },
@@ -105,7 +105,7 @@ export function createJiraIssueTracking(_config: JiraAdapterConfig): IssueTracki
         }),
       });
       if (!resp.ok) {
-        throw new CapabilityError('jira', `addComment failed ${resp.status}`, false);
+        throw new CapabilityError('jira', `addComment failed ${resp.status}`, resp.status === 429 || resp.status >= 500);
       }
       const data = await resp.json() as Record<string, unknown>;
       const author = data['author'] as Record<string, unknown> | undefined;

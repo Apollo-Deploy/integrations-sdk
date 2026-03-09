@@ -342,14 +342,21 @@ Use [Slack's Block Kit Builder](https://app.slack.com/block-kit-builder) to visu
 
 ## Error handling
 
-The adapter wraps Slack Web API errors as `CapabilityError`. The `retryable` flag is `true` for rate limit errors.
+The adapter classifies errors at both the HTTP and Slack application level. HTTP `429` and `5xx` responses are retryable. Slack API error codes are further categorized:
+
+**Retryable errors:** `rate_limited`, `ratelimited`, `internal_error`, `fatal_error`, `request_timeout`, `service_unavailable`
+
+**Authentication errors (not retryable):** `invalid_auth`, `not_authed`, `token_expired`, `token_revoked`, `account_inactive`, `missing_scope`, `no_permission`
 
 | Scenario | Error class | `retryable` |
 |----------|-------------|-------------|
-| `rate_limited` | `CapabilityError` | `true` |
+| `rate_limited` / `ratelimited` | `CapabilityError` | `true` |
+| `internal_error` / `fatal_error` | `CapabilityError` | `true` |
+| `request_timeout` / `service_unavailable` | `CapabilityError` | `true` |
+| HTTP 5xx (server error) | `CapabilityError` | `true` |
 | `channel_not_found` | `CapabilityError` | `false` |
 | `not_in_channel` | `CapabilityError` | `false` |
-| `invalid_auth` | `CapabilityError` | `false` |
+| `invalid_auth` / `token_expired` | `CapabilityError` | `false` |
 | Webhook signature mismatch | `WebhookError` (401) | `false` |
 | Anti-replay (stale timestamp) | `WebhookError` (400) | `false` |
 
@@ -360,8 +367,8 @@ try {
   await msg.sendMessage(tokens, channelId, { text: 'Hello!' });
 } catch (err) {
   if (err instanceof CapabilityError && err.retryable) {
-    // Slack rate limit — wait 1 minute (X-RateLimit-Reset header)
-    await sleep(60_000);
+    // Rate limit or transient server error — schedule retry
+    await queue.enqueue({ type: 'slack-message', payload }, { delay: 5000 });
   }
 }
 ```

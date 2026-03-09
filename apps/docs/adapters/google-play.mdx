@@ -813,6 +813,7 @@ await store.addAppRecoveryTargeting(tokens, 'com.example.myapp', 'recovery-id', 
 | Expired access token | `TokenRefreshError` | Yes |
 | Package not found / access denied | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
 | Edit conflict / stale edit | `CapabilityError` | Yes — retry |
 | `listApps` called | `CapabilityError` | No — not supported |
 | `deleteReviewReply` called | `CapabilityError` | No — not supported |

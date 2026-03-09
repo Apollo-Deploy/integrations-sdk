@@ -389,6 +389,8 @@ const projects = await it.listProjects(tokens);
 | `cloudId` missing from `providerData` | `CapabilityError` | No — re-auth needed |
 | Issue not found (404) | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
+| `getIdentity()` HTTP failure | `OAuthError` | No |
 | Invalid webhook signature | `WebhookError` (400) | No |
 
 ---

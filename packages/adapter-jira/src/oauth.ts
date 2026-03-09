@@ -8,107 +8,81 @@
  * - Single redirect_uri per Atlassian Developer app.
  */
 
+import * as oauth from 'oauth4webapi';
 import { OAuthError, TokenRefreshError } from '@apollo-deploy/integrations';
 import type { OAuthHandler, PostAuthResult } from '@apollo-deploy/integrations';
 import type { JiraAdapterConfig } from './types.js';
 
 const BASE = 'https://auth.atlassian.com';
 
+const AS: oauth.AuthorizationServer = {
+  issuer: BASE,
+  authorization_endpoint: `${BASE}/authorize`,
+  token_endpoint: `${BASE}/oauth/token`,
+};
+
 export function createJiraOAuth(config: JiraAdapterConfig): OAuthHandler {
+  const client: oauth.Client = { client_id: config.clientId };
+  const clientAuth = oauth.ClientSecretPost(config.clientSecret);
+
   return {
     getAuthorizationUrl({ state, scopes, redirectUri }) {
-      const params = new URLSearchParams({
-        audience: 'api.atlassian.com',
-        client_id: config.clientId,
-        scope: (scopes.length ? scopes : ['read:jira-work', 'write:jira-work', 'offline_access']).join(' '),
-        redirect_uri: redirectUri,
-        state,
-        response_type: 'code',
-        prompt: 'consent',
-      });
-      return `${BASE}/authorize?${params.toString()}`;
+      const url = new URL(AS.authorization_endpoint!);
+      url.searchParams.set('audience', 'api.atlassian.com');
+      url.searchParams.set('client_id', config.clientId);
+      url.searchParams.set('scope', (scopes.length ? scopes : ['read:jira-work', 'write:jira-work', 'offline_access']).join(' '));
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('state', state);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('prompt', 'consent');
+      return url.toString();
     },
 
-    async exchangeCode({ code, redirectUri }) {
-      const resp = await fetch(`${BASE}/oauth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          grant_type: 'authorization_code',
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          code,
-          redirect_uri: redirectUri,
-        }),
-      });
-
-      if (!resp.ok) {
-        throw new OAuthError('jira', `Token exchange failed: ${resp.status}`);
+    async exchangeCode({ code, redirectUri, codeVerifier }) {
+      try {
+        const response = await oauth.authorizationCodeGrantRequest(
+          AS, client, clientAuth,
+          new URLSearchParams({ code }),
+          redirectUri,
+          codeVerifier ?? oauth.nopkce,
+        );
+        const result = await oauth.processAuthorizationCodeResponse(AS, client, response);
+        return {
+          accessToken: result.access_token,
+          // Jira rotates refresh tokens — store the one returned
+          refreshToken: result.refresh_token,
+          scope: result.scope ?? '',
+          expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000) : undefined,
+          providerData: {},
+        };
+      } catch (err) {
+        if (err instanceof OAuthError) throw err;
+        throw new OAuthError('jira', String(err));
       }
-
-      const data = await resp.json() as {
-        access_token: string;
-        refresh_token?: string;
-        expires_in?: number;
-        scope?: string;
-        error?: string;
-      };
-
-      if (data.error) {
-        throw new OAuthError('jira', data.error);
-      }
-
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        scope: data.scope ?? '',
-        expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined,
-        providerData: {},
-      };
     },
 
     async refreshToken(refreshToken) {
-      const resp = await fetch(`${BASE}/oauth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          grant_type: 'refresh_token',
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          refresh_token: refreshToken,
-        }),
-      });
-
-      if (!resp.ok) {
-        throw new TokenRefreshError('jira', `Jira token refresh failed: ${resp.status}`, false);
+      try {
+        const response = await oauth.refreshTokenGrantRequest(AS, client, clientAuth, refreshToken);
+        const result = await oauth.processRefreshTokenResponse(AS, client, response);
+        return {
+          accessToken: result.access_token,
+          // Jira rotates refresh tokens — store the NEW one
+          refreshToken: result.refresh_token,
+          scope: result.scope ?? '',
+          expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000) : undefined,
+          providerData: {},
+        };
+      } catch (err) {
+        throw new TokenRefreshError('jira', `Jira token refresh failed: ${String(err)}`, false);
       }
-
-      const data = await resp.json() as {
-        access_token: string;
-        refresh_token?: string;
-        expires_in?: number;
-        scope?: string;
-        error?: string;
-      };
-
-      if (data.error) {
-        throw new TokenRefreshError('jira', data.error, false);
-      }
-
-      return {
-        accessToken: data.access_token,
-        // Jira rotates refresh tokens — store the NEW one
-        refreshToken: data.refresh_token,
-        scope: data.scope ?? '',
-        expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined,
-        providerData: {},
-      };
     },
 
     async getIdentity(accessToken) {
       const resp = await fetch('https://api.atlassian.com/me', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if (!resp.ok) throw new OAuthError('jira', `Failed to fetch identity: ${resp.status}`);
       const data = await resp.json() as {
         account_id: string;
         display_name: string;

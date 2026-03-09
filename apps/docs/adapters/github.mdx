@@ -456,6 +456,7 @@ The GitHub adapter maps API errors to SDK error types:
 | Repository not found | `CapabilityError` | No |
 | Permission denied (403) | `CapabilityError` | No |
 | Rate limited (429 / 403 with `X-RateLimit-Remaining: 0`) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
 | Invalid webhook signature | `WebhookError` (400) | No |
 | Missing `X-GitHub-Delivery` header | `WebhookError` (400) | No |
 | OAuth code exchange failed | `OAuthError` | No |

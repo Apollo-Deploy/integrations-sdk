@@ -282,7 +282,9 @@ Discord's `sendRichMessage` sends embeds. The `type: 'rich'` block is mapped to 
 | Channel not found (404) | `CapabilityError` | No |
 | Missing permissions (403) | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
 | Invalid bot token | `OAuthError` | No |
+| `getIdentity()` HTTP failure | `OAuthError` | No |
 
 ---
 

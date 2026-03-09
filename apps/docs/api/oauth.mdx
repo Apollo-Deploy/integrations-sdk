@@ -62,7 +62,7 @@ Refreshes an expired access token. Throws `OAuthError` if the provider does not 
 getIdentity(accessToken: string): Promise<ProviderIdentity>
 ```
 
-Fetches the authenticated user's identity from the provider. Used to populate connection metadata.
+Fetches the authenticated user's identity from the provider. Used to populate connection metadata. Throws `OAuthError` with code `OAUTH_IDENTITY_FAILED` if the provider returns an HTTP error (e.g. invalid or expired token).
 
 ### `afterAuthorize(tokens)` (optional)
 

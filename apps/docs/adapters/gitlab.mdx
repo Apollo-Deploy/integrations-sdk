@@ -366,6 +366,8 @@ const projects = await it.listProjects(tokens);
 | Invalid webhook secret | `WebhookError` (401) | No |
 | Project not found (404) | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
+| `getIdentity()` HTTP failure | `OAuthError` | No |
 | Insufficient scope | `OAuthError` | No (re-auth needed) |
 
 ---

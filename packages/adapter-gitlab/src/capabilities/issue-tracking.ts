@@ -3,11 +3,16 @@ import type { IssueTrackingCapability, TokenSet } from '@apollo-deploy/integrati
 import type { Issue, IssueComment, IssueFilters, ProjectRef } from '@apollo-deploy/integrations';
 import type { GitlabAdapterConfig } from '../types.js';
 
-function glFetch(base: string, token: string, path: string, init?: RequestInit) {
-  return fetch(`${base}/api/v4${path}`, {
+async function glFetch(base: string, token: string, path: string, init?: RequestInit) {
+  const resp = await fetch(`${base}/api/v4${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new CapabilityError('gitlab', `GitLab API ${resp.status}: ${body}`, resp.status === 429 || resp.status >= 500);
+  }
+  return resp;
 }
 
 /**
@@ -43,7 +48,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
   return {
     async listProjects(tokens: TokenSet): Promise<ProjectRef[]> {
       const resp = await glFetch(base, tokens.accessToken, '/projects?membership=true&per_page=50');
-      if (!resp.ok) throw new CapabilityError('gitlab', 'listProjects failed');
       const items = await resp.json() as Array<Record<string, unknown>>;
       return items.map((p) => ({ id: String(p['id']), name: p['name'] as string, key: p['path_with_namespace'] as string }));
     },
@@ -54,7 +58,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
         ? `/projects/${encodeURIComponent(projectPath)}/issues?per_page=50`
         : '/issues?scope=assigned_to_me&per_page=50';
       const resp = await glFetch(base, tokens.accessToken, url);
-      if (!resp.ok) throw new CapabilityError('gitlab', 'listIssues failed');
       const items = await resp.json() as Array<Record<string, unknown>>;
       return { items: items.map((i) => mapGitlabIssue(i, projectPath)), hasMore: false };
     },
@@ -62,7 +65,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
     async getIssue(tokens: TokenSet, issueId: string): Promise<Issue> {
       const { projectPath, iid } = parseIssueId(issueId);
       const resp = await glFetch(base, tokens.accessToken, `/projects/${encodeURIComponent(projectPath)}/issues/${iid}`);
-      if (!resp.ok) throw new CapabilityError('gitlab', `getIssue failed: ${resp.status}`);
       return mapGitlabIssue(await resp.json() as Record<string, unknown>, projectPath);
     },
 
@@ -71,7 +73,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
         method: 'POST',
         body: JSON.stringify({ title: input.title, description: input.description, labels: input.labels?.join(',') }),
       });
-      if (!resp.ok) throw new CapabilityError('gitlab', `createIssue failed: ${resp.status}`);
       return mapGitlabIssue(await resp.json() as Record<string, unknown>, input.projectId);
     },
 
@@ -86,7 +87,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
           ...(input.labels ? { labels: input.labels.join(',') } : {}),
         }),
       });
-      if (!resp.ok) throw new CapabilityError('gitlab', `updateIssue failed: ${resp.status}`);
       return mapGitlabIssue(await resp.json() as Record<string, unknown>, projectPath);
     },
 
@@ -96,7 +96,6 @@ export function createGitlabIssueTracking(config: GitlabAdapterConfig): IssueTra
         method: 'POST',
         body: JSON.stringify({ body }),
       });
-      if (!resp.ok) throw new CapabilityError('gitlab', `addComment failed: ${resp.status}`);
       const note = await resp.json() as Record<string, unknown>;
       const author = note['author'] as Record<string, unknown> | undefined;
       return {

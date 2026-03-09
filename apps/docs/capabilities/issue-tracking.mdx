@@ -110,6 +110,10 @@ const comment = await it.addComment(
 // comment.id, comment.body, comment.author, comment.createdAt
 ```
 
+## Error handling
+
+All issue tracking methods throw `CapabilityError` on failure. The `retryable` flag is `true` for HTTP `429` (rate limit) and `5xx` (server error) responses. See the [Jira](/docs/adapters/jira#error-handling), [GitLab](/docs/adapters/gitlab#error-handling), and [Linear](/docs/adapters/linear#error-handling) adapter docs for full error tables.
+
 ## Types
 
 ```typescript

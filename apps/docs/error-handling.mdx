@@ -99,6 +99,20 @@ Thrown by capability methods (e.g. `sourceControl.listRepositories()`).
   }}
 />
 
+#### Retryable semantics
+
+All adapters use a consistent rule for the `retryable` flag:
+
+| HTTP status | `retryable` | Reason |
+|---|---|---|
+| `429` (Too Many Requests) | `true` | Rate-limited — safe to retry after a backoff |
+| `5xx` (Server Error) | `true` | Transient server-side failure |
+| `4xx` (Client Error, not 429) | `false` | Bad request, auth failure, not found — retrying won't help |
+
+<Callout type="info">
+Slack additionally classifies errors at the application level. Slack API errors like `rate_limited`, `internal_error`, `fatal_error`, `request_timeout`, and `service_unavailable` are treated as retryable. Authentication errors like `invalid_auth`, `token_expired`, and `token_revoked` are **not** retryable.
+</Callout>
+
 ```typescript title="lib/deploy.ts" lineNumbers
 import { CapabilityError } from '@apollo-deploy/integrations';
 
@@ -106,7 +120,7 @@ try {
   await github.sourceControl!.createCommitStatus(tokens, input);
 } catch (error) {
   if (error instanceof CapabilityError && error.retryable) {
-    // Schedule a retry
+    // Schedule a retry — this fires for 429 (rate limit) and 5xx (server errors)
     await queue.enqueue({ type: 'commit-status', payload: input }, { delay: 5000 });
   } else {
     throw error;

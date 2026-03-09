@@ -716,6 +716,7 @@ Methods: `listAppRecoveryActions`, `createAppRecoveryAction`, `deployAppRecovery
 |----------|-------------|-----------|
 | API error 4xx (non-rate-limit) | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| Server error (5xx) | `CapabilityError` | Yes |
 | Private key signing failure | `OAuthError` | No (check key format) |
 | Phased release not found | `CapabilityError` | No |
 | App Recovery method called | `CapabilityError` | No — Google Play only |

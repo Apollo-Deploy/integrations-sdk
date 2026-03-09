@@ -1,71 +1,75 @@
+import * as oauth from 'oauth4webapi';
 import { OAuthError, TokenRefreshError } from '@apollo-deploy/integrations';
 import type { OAuthHandler } from '@apollo-deploy/integrations';
 import type { DiscordAdapterConfig } from './types.js';
 
+const AS: oauth.AuthorizationServer = {
+  issuer: 'https://discord.com',
+  authorization_endpoint: 'https://discord.com/api/oauth2/authorize',
+  token_endpoint: 'https://discord.com/api/oauth2/token',
+};
+
+const DEFAULT_SCOPES = ['identify', 'email', 'guilds'];
+
 export function createDiscordOAuth(config: DiscordAdapterConfig): OAuthHandler {
+  const client: oauth.Client = { client_id: config.clientId };
+  const clientAuth = oauth.ClientSecretPost(config.clientSecret);
+
   return {
     getAuthorizationUrl({ state, scopes, redirectUri }) {
-      const params = new URLSearchParams({
-        client_id: config.clientId,
-        redirect_uri: redirectUri,
-        response_type: 'code',
-        scope: (scopes.length ? scopes : ['identify', 'email', 'guilds']).join(' '),
-        state,
-      });
-      return `https://discord.com/api/oauth2/authorize?${params.toString()}`;
+      const url = new URL(AS.authorization_endpoint!);
+      url.searchParams.set('client_id', config.clientId);
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('scope', (scopes.length ? scopes : DEFAULT_SCOPES).join(' '));
+      url.searchParams.set('state', state);
+      return url.toString();
     },
 
-    async exchangeCode({ code, redirectUri }) {
-      const resp = await fetch('https://discord.com/api/oauth2/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: redirectUri,
-        }).toString(),
-      });
-      if (!resp.ok) throw new OAuthError('discord', `Code exchange failed: ${resp.status}`);
-      const data = await resp.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string };
-      if (data.error || !data.access_token) throw new OAuthError('discord', data.error ?? 'Missing access_token');
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        scope: data.scope ?? '',
-        expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined,
-        providerData: {},
-      };
+    async exchangeCode({ code, redirectUri, codeVerifier }) {
+      try {
+        const response = await oauth.authorizationCodeGrantRequest(
+          AS, client, clientAuth,
+          new URLSearchParams({ code }),
+          redirectUri,
+          codeVerifier ?? oauth.nopkce,
+        );
+        const result = await oauth.processAuthorizationCodeResponse(AS, client, response);
+        return {
+          accessToken: result.access_token,
+          refreshToken: result.refresh_token,
+          scope: result.scope ?? '',
+          expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000) : undefined,
+          providerData: {},
+        };
+      } catch (err) {
+        if (err instanceof OAuthError) throw err;
+        throw new OAuthError('discord', String(err));
+      }
     },
 
     async refreshToken(refreshToken) {
-      const resp = await fetch('https://discord.com/api/oauth2/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-        }).toString(),
-      });
-      if (!resp.ok) throw new TokenRefreshError('discord', `Refresh failed: ${resp.status}`, resp.status === 401 ? false : true);
-      const data = await resp.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string };
-      if (data.error || !data.access_token) throw new OAuthError('discord', data.error ?? 'Missing access_token');
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        scope: data.scope ?? '',
-        expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined,
-        providerData: {},
-      };
+      try {
+        const response = await oauth.refreshTokenGrantRequest(AS, client, clientAuth, refreshToken);
+        const result = await oauth.processRefreshTokenResponse(AS, client, response);
+        return {
+          accessToken: result.access_token,
+          refreshToken: result.refresh_token,
+          scope: result.scope ?? '',
+          expiresAt: result.expires_in ? new Date(Date.now() + result.expires_in * 1000) : undefined,
+          providerData: {},
+        };
+      } catch (err) {
+        if (err instanceof TokenRefreshError) throw err;
+        throw new TokenRefreshError('discord', `Refresh failed: ${String(err)}`, true);
+      }
     },
 
     async getIdentity(accessToken) {
       const resp = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if (!resp.ok) throw new OAuthError('discord', `Failed to fetch identity: ${resp.status}`);
       const user = await resp.json() as { id: string; username: string; global_name?: string; email?: string; avatar?: string };
       const avatarUrl = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined;
       return {

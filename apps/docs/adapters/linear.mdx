@@ -294,6 +294,7 @@ const teams = await it.listProjects(tokens);
 | Invalid webhook signature | `WebhookError` (400) | No |
 | Resource not found | `CapabilityError` | No |
 | Rate limited (429) | `CapabilityError` | Yes |
+| `getIdentity()` HTTP failure | `OAuthError` | No |
 
 ---
 

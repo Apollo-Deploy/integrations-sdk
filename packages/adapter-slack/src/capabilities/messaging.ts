@@ -1,68 +1,116 @@
-/**
- * Slack messaging capability.
- * Uses @slack/web-api.
- */
-
-import { WebClient } from '@slack/web-api';
 import type { MessagingCapability, TokenSet, MessagePayload, MessageBlock } from '@apollo-deploy/integrations';
 import { CapabilityError } from '@apollo-deploy/integrations';
 import type { SlackAdapterConfig } from '../types.js';
 
-export function createSlackMessaging(_config: SlackAdapterConfig): MessagingCapability {
-  function client(tokens: TokenSet) {
-    return new WebClient(tokens.accessToken);
+const SLACK_API = 'https://slack.com/api';
+
+/** Slack error codes that indicate a transient/retryable failure. */
+const RETRYABLE_ERRORS = new Set([
+  'rate_limited',
+  'ratelimited',
+  'internal_error',
+  'fatal_error',
+  'request_timeout',
+  'service_unavailable',
+]);
+
+/** Slack error codes that indicate an auth problem (never retry). */
+const AUTH_ERRORS = new Set([
+  'invalid_auth',
+  'not_authed',
+  'token_expired',
+  'token_revoked',
+  'account_inactive',
+  'missing_scope',
+  'no_permission',
+]);
+
+interface SlackErrorResponse {
+  ok: false;
+  error: string;
+  response_metadata?: { messages?: string[] };
+}
+
+async function slackFetch<T extends { ok: boolean; error?: string }>(
+  endpoint: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const r = await fetch(`${SLACK_API}/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(body),
+  });
+
+  // HTTP-level failure (network / proxy / 5xx before Slack responds)
+  if (!r.ok) {
+    const retryable = r.status >= 500 || r.status === 429;
+    throw new CapabilityError('slack', `HTTP ${r.status} from ${endpoint}`, retryable);
   }
 
+  const data = (await r.json()) as T | SlackErrorResponse;
+  if (!data.ok) {
+    const err = (data as SlackErrorResponse).error;
+    const retryable = RETRYABLE_ERRORS.has(err);
+    throw new CapabilityError('slack', err, retryable);
+  }
+  return data as T;
+}
+
+export function createSlackMessaging(_config: SlackAdapterConfig): MessagingCapability {
   function wrap<T>(fn: () => Promise<T>, action: string): Promise<T> {
     return fn().catch((err) => {
+      if (err instanceof CapabilityError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      const retryable = msg.includes('rate_limited') || msg.includes('ratelimited');
-      throw new CapabilityError('slack', `${action}: ${msg}`, retryable);
+      throw new CapabilityError('slack', `${action}: ${msg}`, false);
     });
   }
 
   return {
-    async listChannels(tokens, opts) {
+    async listChannels(tokens: TokenSet, opts) {
       return wrap(async () => {
-        const slack = client(tokens);
-        const resp = await slack.conversations.list({
-          exclude_archived: true,
-          limit: opts?.limit ?? 200,
-          cursor: opts?.cursor,
+        const params = new URLSearchParams({ exclude_archived: 'true', limit: String(opts?.limit ?? 200) });
+        if (opts?.cursor) params.set('cursor', opts.cursor);
+        const r = await fetch(`${SLACK_API}/conversations.list?${params}`, {
+          headers: { Authorization: `Bearer ${tokens.accessToken}` },
         });
-        const channels = (resp.channels ?? []).map((c) => ({
-          id: c.id ?? '',
-          name: c.name ?? '',
-          isPrivate: Boolean(c.is_private),
-        }));
+        if (!r.ok) {
+          throw new CapabilityError('slack', `HTTP ${r.status} from conversations.list`, r.status >= 500 || r.status === 429);
+        }
+        const data = (await r.json()) as {
+          ok: boolean;
+          error?: string;
+          channels?: Array<{ id: string; name: string; is_private: boolean }>;
+          response_metadata?: { next_cursor?: string };
+        };
+        if (!data.ok) {
+          throw new CapabilityError('slack', data.error ?? 'conversations.list failed', RETRYABLE_ERRORS.has(data.error ?? ''));
+        }
         return {
-          items: channels,
-          hasMore: Boolean(resp.response_metadata?.next_cursor),
-          cursor: resp.response_metadata?.next_cursor || undefined,
+          items: (data.channels ?? []).map((c) => ({ id: c.id, name: c.name, isPrivate: c.is_private })),
+          hasMore: Boolean(data.response_metadata?.next_cursor),
+          cursor: data.response_metadata?.next_cursor || undefined,
         };
       }, 'listChannels');
     },
 
-    async sendMessage(tokens, channelId, message: MessagePayload) {
+    async sendMessage(tokens: TokenSet, channelId: string, message: MessagePayload) {
       return wrap(async () => {
-        const slack = client(tokens);
-        const resp = await slack.chat.postMessage({
-          channel: channelId,
-          text: message.text,
-          thread_ts: message.threadId,
-        });
-        return {
-          messageId: resp.ts ?? '',
-          channelId: resp.channel ?? channelId,
-          timestamp: resp.ts ?? '',
-        };
+        const body: Record<string, unknown> = { channel: channelId, text: message.text };
+        if (message.threadId) body['thread_ts'] = message.threadId;
+        const data = await slackFetch<{ ok: boolean; error?: string; ts: string; channel: string }>(
+          'chat.postMessage', tokens.accessToken, body,
+        );
+        return { messageId: data.ts, channelId: data.channel, timestamp: data.ts };
       }, 'sendMessage');
     },
 
-    async updateMessage(tokens, channelId, messageId, message: MessagePayload) {
+    async updateMessage(tokens: TokenSet, channelId: string, messageId: string, message: MessagePayload) {
       return wrap(async () => {
-        const slack = client(tokens);
-        await slack.chat.update({
+        await slackFetch('chat.update', tokens.accessToken, {
           channel: channelId,
           ts: messageId,
           text: message.text,
@@ -70,19 +118,17 @@ export function createSlackMessaging(_config: SlackAdapterConfig): MessagingCapa
       }, 'updateMessage');
     },
 
-    async sendRichMessage(tokens, channelId, blocks: MessageBlock[]) {
+    async sendRichMessage(tokens: TokenSet, channelId: string, blocks: MessageBlock[]) {
+      // MessageBlock is shaped after Slack Block Kit — pass through directly.
       return wrap(async () => {
-        const slack = client(tokens);
-        const resp = await slack.chat.postMessage({
-          channel: channelId,
-          blocks: blocks as any,
-          text: '', // Fallback for notifications
-        });
-        return {
-          messageId: resp.ts ?? '',
-          channelId: resp.channel ?? channelId,
-          timestamp: resp.ts ?? '',
-        };
+        const data = await slackFetch<{ ok: boolean; error?: string; ts: string; channel: string }>(
+          'chat.postMessage', tokens.accessToken, {
+            channel: channelId,
+            blocks,
+            text: '', // fallback for notifications
+          },
+        );
+        return { messageId: data.ts, channelId: data.channel, timestamp: data.ts };
       }, 'sendRichMessage');
     },
   };
