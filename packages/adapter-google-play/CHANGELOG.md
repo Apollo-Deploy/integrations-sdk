@@ -1,5 +1,20 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.4.0
+
+### Minor Changes
+
+- 63130a8: feat: replace SetupFlow string with SetupFlowStep[] array
+
+### Patch Changes
+
+- a58ee75: Merge pull request #4 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [63130a8]
+- Updated dependencies [a6920f7]
+- Updated dependencies [53bb681]
+- Updated dependencies [a5c584a]
+  - @apollo-deploy/integrations@1.4.0
+
 ## 1.3.2
 
 ### Patch Changes
