@@ -78,9 +78,12 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Skip release-only commits to avoid PR loops.
-          # These files are typically produced by changesets versioning.
-          NON_RELEASE_CHANGES="$(echo "$CHANGED" | grep -Ev '^(\.changeset/|packages/[^/]+/CHANGELOG\.md$|packages/[^/]+/package\.json$|bun\.lock$)$' || true)"
+          # Skip commits that only touch changeset/changelog artifacts to avoid
+          # PR loops. package.json is intentionally NOT excluded here — dep
+          # updates and other legitimate package.json changes must still trigger
+          # a changeset. The job-level `if` already blocks "chore: version
+          # packages" commits (the only case where package.json bumps loop).
+          NON_RELEASE_CHANGES="$(echo "$CHANGED" | grep -Ev '^(\.changeset/|packages/[^/]+/CHANGELOG\.md$|bun\.lock$)$' || true)"
           if [ -z "$NON_RELEASE_CHANGES" ]; then
             echo "Only release/versioning files changed — skipping changeset creation."
             echo "skip=true" >> "$GITHUB_OUTPUT"
