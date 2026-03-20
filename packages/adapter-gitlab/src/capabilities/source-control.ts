@@ -514,8 +514,8 @@ export function createGitlabSourceControl(
         behindBy: 0,
         commits,
         changedFiles,
-        totalAdditions: changedFiles.reduce((n, f) => n + f.additions, 0),
-        totalDeletions: changedFiles.reduce((n, f) => n + f.deletions, 0),
+        totalAdditions: changedFiles.reduce<number>((n, f: ChangedFile) => n + f.additions, 0),
+        totalDeletions: changedFiles.reduce<number>((n, f: ChangedFile) => n + f.deletions, 0),
         mergedPullRequests: [],
         url: undefined,
       };
