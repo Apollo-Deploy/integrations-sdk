@@ -78,12 +78,21 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
+          # Skip release-only commits to avoid PR loops.
+          # These files are typically produced by changesets versioning.
+          NON_RELEASE_CHANGES="$(echo "$CHANGED" | grep -Ev '^(\.changeset/|packages/[^/]+/CHANGELOG\.md$|packages/[^/]+/package\.json$|bun\.lock$)$' || true)"
+          if [ -z "$NON_RELEASE_CHANGES" ]; then
+            echo "Only release/versioning files changed — skipping changeset creation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           FRONTMATTER=""
 
           # Helper: append to FRONTMATTER if any changed file is under $prefix
           check_pkg() {
             local prefix="$1" name="$2"
-            if echo "$CHANGED" | grep -q "^${prefix}"; then
+            if echo "$NON_RELEASE_CHANGES" | grep -q "^${prefix}"; then
               FRONTMATTER="${FRONTMATTER}\"${name}\": ${BUMP}"$'\n'
             fi
           }
