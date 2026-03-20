@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-jira",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Jira adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
