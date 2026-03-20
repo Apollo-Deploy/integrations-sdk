@@ -1,8 +1,14 @@
 import type {
   Branch,
+  ChangedFile,
+  ChangedFilesOpts,
+  CodeScanAlert,
+  CodeScanAlertsOpts,
   Commit,
   CommitListOpts,
+  CommitStatus,
   CommitStatusInput,
+  CommitStatusesOpts,
   Paginated,
   PaginationOpts,
   PullRequest,
@@ -43,4 +49,62 @@ export interface SourceControlCapability {
     repoId: string,
     opts?: CommitListOpts,
   ): Promise<Paginated<Commit>>;
+
+  // ── Changed Files ──────────────────────────────────────────────────────────
+
+  /**
+   * List files changed in a pull request / merge request.
+   */
+  listPullRequestFiles(
+    tokens: TokenSet,
+    repoId: string,
+    prNumber: number,
+    opts?: ChangedFilesOpts,
+  ): Promise<Paginated<ChangedFile>>;
+
+  /**
+   * List files changed in a specific commit.
+   */
+  listCommitFiles(
+    tokens: TokenSet,
+    repoId: string,
+    sha: string,
+    opts?: ChangedFilesOpts,
+  ): Promise<Paginated<ChangedFile>>;
+
+  // ── Code Scanning ──────────────────────────────────────────────────────────
+
+  /**
+   * List code-scanning / SAST alerts for a repository.
+   * Throws CapabilityError with `retryable: false` if the service doesn't
+   * support code scanning.
+   */
+  listCodeScanAlerts(
+    tokens: TokenSet,
+    repoId: string,
+    opts?: CodeScanAlertsOpts,
+  ): Promise<Paginated<CodeScanAlert>>;
+
+  /**
+   * Get a single code-scanning alert by its number.
+   * Throws CapabilityError with `retryable: false` if unsupported.
+   */
+  getCodeScanAlert(
+    tokens: TokenSet,
+    repoId: string,
+    alertNumber: number,
+  ): Promise<CodeScanAlert>;
+
+  // ── Commit Statuses (read) ─────────────────────────────────────────────────
+
+  /**
+   * List combined commit statuses for a given SHA.
+   * Returns an empty page for services that don't support commit statuses.
+   */
+  listCommitStatuses(
+    tokens: TokenSet,
+    repoId: string,
+    sha: string,
+    opts?: CommitStatusesOpts,
+  ): Promise<Paginated<CommitStatus>>;
 }
