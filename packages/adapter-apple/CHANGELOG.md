@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-apple
 
+## 1.4.1
+
+### Patch Changes
+
+- 7ec2981: Merge pull request #5 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [7ec2981]
+  - @apollo-deploy/integrations@1.4.1
+
 ## 1.4.0
 
 ### Minor Changes
