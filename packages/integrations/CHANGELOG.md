@@ -1,5 +1,14 @@
 # @apollo-deploy/integrations
 
+## 1.4.0
+
+### Minor Changes
+
+- 63130a8: feat: replace SetupFlow string with SetupFlowStep[] array
+- a6920f7: feat: add changed files, code scanning, and commit status reads to source control
+- 53bb681: feat: add ConfigField and configSchema to adapter metadata
+- a5c584a: feat: add compareReleaseWindows to source control capability
+
 ## 1.3.1
 
 ### Patch Changes
