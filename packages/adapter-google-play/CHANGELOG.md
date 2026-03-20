@@ -1,5 +1,11 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.3.2
+
+### Patch Changes
+
+- 4493c75: fix: replace workspace:\* with ^1.3.1 for external consumers
+
 ## 1.3.1
 
 ### Patch Changes

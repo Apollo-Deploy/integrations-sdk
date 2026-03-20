@@ -1,5 +1,11 @@
 # @apollo-deploy/adapter-linear
 
+## 1.2.2
+
+### Patch Changes
+
+- 4493c75: fix: replace workspace:\* with ^1.3.1 for external consumers
+
 ## 1.2.1
 
 ### Patch Changes
