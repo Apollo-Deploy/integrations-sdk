@@ -5,8 +5,8 @@ import type {
   MessageResult,
   Paginated,
   PaginationOpts,
-} from '../models/index.js';
-import type { TokenSet } from '../oauth.js';
+} from "../models/index.js";
+import type { TokenSet } from "../oauth.js";
 
 /**
  * Messaging capability.
@@ -15,8 +15,24 @@ import type { TokenSet } from '../oauth.js';
  * All methods receive tokens as a parameter — adapters are stateless.
  */
 export interface MessagingCapability {
-  listChannels(tokens: TokenSet, opts?: PaginationOpts): Promise<Paginated<Channel>>;
-  sendMessage(tokens: TokenSet, channelId: string, message: MessagePayload): Promise<MessageResult>;
-  updateMessage(tokens: TokenSet, channelId: string, messageId: string, message: MessagePayload): Promise<void>;
-  sendRichMessage(tokens: TokenSet, channelId: string, blocks: MessageBlock[]): Promise<MessageResult>;
+  listChannels(
+    tokens: TokenSet,
+    opts?: PaginationOpts,
+  ): Promise<Paginated<Channel>>;
+  sendMessage(
+    tokens: TokenSet,
+    channelId: string,
+    message: MessagePayload,
+  ): Promise<MessageResult>;
+  updateMessage(
+    tokens: TokenSet,
+    channelId: string,
+    messageId: string,
+    message: MessagePayload,
+  ): Promise<void>;
+  sendRichMessage(
+    tokens: TokenSet,
+    channelId: string,
+    blocks: MessageBlock[],
+  ): Promise<MessageResult>;
 }

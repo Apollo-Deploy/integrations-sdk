@@ -1,0 +1,32 @@
+{
+  "name": "@apollo-deploy/adapter-sentry",
+  "version": "1.0.0",
+  "description": "Sentry adapter for Apollo Deploy integration hub \u2014 errors, vitals, logs, replays, and more",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsc --build --watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@apollo-deploy/integrations": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}

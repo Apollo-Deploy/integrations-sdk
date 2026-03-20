@@ -6,7 +6,7 @@ export interface GooglePlayAdapterConfig {
 }
 
 export interface ServiceAccountCredentials {
-  type: 'service_account';
+  type: "service_account";
   project_id: string;
   private_key_id: string;
   private_key: string;

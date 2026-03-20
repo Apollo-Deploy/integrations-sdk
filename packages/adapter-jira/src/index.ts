@@ -1,2 +1,2 @@
-export { createJiraAdapter } from './adapter.js';
-export type { JiraAdapterConfig } from './types.js';
+export { createJiraAdapter } from "./adapter.js";
+export type { JiraAdapterConfig } from "./types.js";

@@ -2,16 +2,23 @@
  * Adapter capability identifiers.
  * These map to the capability interfaces an adapter may implement.
  */
-export type AdapterCapability = 'source-control' | 'messaging' | 'issue-tracking' | 'ci-cd' | 'app-store';
+export type AdapterCapability =
+  | "source-control"
+  | "messaging"
+  | "issue-tracking"
+  | "ci-cd"
+  | "app-store"
+  | "monitoring";
 
-import type { OAuthHandler } from './oauth.js';
-import type { WebhookHandler } from './webhook.js';
-import type { SourceControlCapability } from './capabilities/source-control.js';
-import type { MessagingCapability } from './capabilities/messaging.js';
-import type { IssueTrackingCapability } from './capabilities/issue-tracking.js';
-import type { AppStoreCapability } from './capabilities/app-store.js';
-import type { CryptoProvider } from '../crypto.js';
-import type { IntegrationEvent } from './models/index.js';
+import type { OAuthHandler } from "./oauth.js";
+import type { WebhookHandler } from "./webhook.js";
+import type { SourceControlCapability } from "./capabilities/source-control.js";
+import type { MessagingCapability } from "./capabilities/messaging.js";
+import type { IssueTrackingCapability } from "./capabilities/issue-tracking.js";
+import type { AppStoreCapability } from "./capabilities/app-store.js";
+import type { MonitoringCapability } from "./capabilities/monitoring.js";
+import type { CryptoProvider } from "../crypto.js";
+import type { IntegrationEvent } from "./models/index.js";
 
 /** Minimal logger interface — compatible with Fastify's logger and pino. */
 export interface Logger {
@@ -43,7 +50,13 @@ export interface AdapterContext {
  * - `pat`             — Personal Access Token (provider-issued, not OAuth).
  * - `none`            — No credentials required (public / unauthenticated APIs).
  */
-export type AuthMethod = 'oauth2' | 'api_key' | 'webhook_secret' | 'basic' | 'pat' | 'none';
+export type AuthMethod =
+  | "oauth2"
+  | "api_key"
+  | "webhook_secret"
+  | "basic"
+  | "pat"
+  | "none";
 
 /**
  * How the client should present the connect/install flow.
@@ -53,7 +66,11 @@ export type AuthMethod = 'oauth2' | 'api_key' | 'webhook_secret' | 'basic' | 'pa
  * - `oauth_then_configure`  — OAuth button → post-auth configuration step (repo/channel picker).
  * - `none`                 — One-click install, no credentials needed.
  */
-export type SetupFlow = 'oauth_only' | 'credential_form' | 'oauth_then_configure' | 'none';
+export type SetupFlow =
+  | "oauth_only"
+  | "credential_form"
+  | "oauth_then_configure"
+  | "none";
 
 /**
  * A single credential field the connect UI must render.
@@ -71,13 +88,13 @@ export interface CredentialInputField {
    * - `select`       — Dropdown; requires `options`.
    * - `textarea`     — Multi-line text area (JSON configs, keys).
    */
-  type: 'text' | 'password' | 'url' | 'select' | 'textarea';
+  type: "text" | "password" | "url" | "select" | "textarea";
   required: boolean;
   placeholder?: string;
   /** Short help copy rendered below the input. */
   helpText?: string;
   /** Only for `type: 'select'`. */
-  options?: Array<{ value: string; label: string }>;
+  options?: { value: string; label: string }[];
 
   // ── Client-side validation ──────────────────────────────────────────────
 
@@ -220,6 +237,9 @@ export interface IntegrationAdapter<_TConfig = unknown> {
 
   /** App store capability implementation. Present only if declared in capabilities. */
   readonly appStore?: AppStoreCapability;
+
+  /** Monitoring capability implementation (errors, vitals, logs). Present only if declared in capabilities. */
+  readonly monitoring?: MonitoringCapability;
 
   /** Token lifecycle metadata — drives refresh scheduling. */
   readonly tokenMetadata: TokenMetadata;

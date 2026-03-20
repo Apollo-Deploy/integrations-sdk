@@ -8,7 +8,7 @@
  * - Capability discovery via hub.getAdaptersByCapability()
  */
 
-import { UnknownAdapterError } from './errors.js';
+import { UnknownAdapterError } from "./errors.js";
 import type {
   AdapterAuthConfig,
   AdapterCapability,
@@ -18,9 +18,9 @@ import type {
   IntegrationAdapter,
   Logger,
   SetupFlow,
-} from './types/adapter.js';
-import type { IntegrationEvent } from './types/models/index.js';
-import type { CryptoProvider } from './crypto.js';
+} from "./types/adapter.js";
+import type { IntegrationEvent } from "./types/models/index.js";
+import type { CryptoProvider } from "./crypto.js";
 
 // ─── Public Types ─────────────────────────────────────────────────────────────
 
@@ -42,11 +42,14 @@ export interface WebhookHandlerOptions {
   waitUntil?: (promise: Promise<unknown>) => void;
 }
 
-export type EventHandler = (event: IntegrationEvent, context: EventContext) => Promise<void>;
+export type EventHandler = (
+  event: IntegrationEvent,
+  context: EventContext,
+) => Promise<void>;
 
 export interface EventContext {
   hub: IntegrationHub;
-  getAdapter<K extends string>(key: K): IntegrationAdapter;
+  getAdapter(key: string): IntegrationAdapter;
   logger: Logger;
 }
 
@@ -72,7 +75,9 @@ export interface AdapterInfo {
   auth: ClientAuthConfig;
 }
 
-export interface HubConfig<TAdapters extends Record<string, IntegrationAdapter>> {
+export interface HubConfig<
+  TAdapters extends Record<string, IntegrationAdapter>,
+> {
   adapters: TAdapters;
   crypto: CryptoProvider;
   logger: Logger;
@@ -82,7 +87,9 @@ export interface HubConfig<TAdapters extends Record<string, IntegrationAdapter>>
  * Type-safe webhook router.
  * hub.webhooks.github(req) only compiles if 'github' is in TAdapters.
  */
-export type WebhookRouter<TAdapters extends Record<string, IntegrationAdapter>> = {
+export type WebhookRouter<
+  TAdapters extends Record<string, IntegrationAdapter>,
+> = {
   [K in keyof TAdapters]: (
     request: WebhookRequest,
     options?: WebhookHandlerOptions,
@@ -92,14 +99,17 @@ export type WebhookRouter<TAdapters extends Record<string, IntegrationAdapter>> 
 // ─── Hub Implementation ───────────────────────────────────────────────────────
 
 export class IntegrationHub<
-  TAdapters extends Record<string, IntegrationAdapter> = Record<string, IntegrationAdapter>,
+  TAdapters extends Record<string, IntegrationAdapter> = Record<
+    string,
+    IntegrationAdapter
+  >,
 > {
   readonly adapters: TAdapters;
   readonly webhooks: WebhookRouter<TAdapters>;
 
-  private readonly _eventHandlers: Map<string, EventHandler[]> = new Map();
+  private readonly _eventHandlers = new Map<string, EventHandler[]>();
   private readonly _wildcardHandlers: EventHandler[] = [];
-  private readonly _context: Omit<AdapterContext, 'emitEvent'> & {
+  private readonly _context: Omit<AdapterContext, "emitEvent"> & {
     emitEvent: (event: IntegrationEvent) => Promise<void>;
   };
 
@@ -117,8 +127,11 @@ export class IntegrationHub<
     // Build type-safe webhook router via Proxy
     this.webhooks = new Proxy({} as WebhookRouter<TAdapters>, {
       get: (_target, prop: string) => {
-        return (request: WebhookRequest, options?: WebhookHandlerOptions) =>
-          this._handleWebhook(prop, request, options);
+        return (
+          request: WebhookRequest,
+          options?: WebhookHandlerOptions,
+        ): Promise<WebhookResponse> =>
+          Promise.resolve(this._handleWebhook(prop, request, options));
       },
     });
   }
@@ -127,8 +140,8 @@ export class IntegrationHub<
 
   /** Get a specific adapter by its registered key. */
   getAdapter<K extends keyof TAdapters>(key: K): TAdapters[K] {
-    const adapter = this.adapters[key];
-    if (!adapter) {
+    const adapter = this.adapters[key] as TAdapters[K] | undefined;
+    if (adapter == null) {
       throw new UnknownAdapterError(String(key));
     }
     return adapter;
@@ -136,9 +149,7 @@ export class IntegrationHub<
 
   /** Get all adapters that support a given capability. */
   getAdaptersByCapability(capability: AdapterCapability): IntegrationAdapter[] {
-    return Object.values(this.adapters).filter((a) =>
-      (a as IntegrationAdapter).supports(capability),
-    );
+    return Object.values(this.adapters).filter((a) => a.supports(capability));
   }
 
   /** Get an array of all registered adapter IDs. */
@@ -152,8 +163,10 @@ export class IntegrationHub<
    */
   listAdapters(): AdapterInfo[] {
     return Object.entries(this.adapters).map(([key, adapter]) => {
-      const a = adapter as IntegrationAdapter;
-      const rawAuth: AdapterAuthConfig = a.metadata?.auth ?? { method: 'oauth2' };
+      const a = adapter;
+      const rawAuth: AdapterAuthConfig = a.metadata?.auth ?? {
+        method: "oauth2",
+      };
       return {
         key,
         id: a.id,
@@ -170,7 +183,8 @@ export class IntegrationHub<
    * Strips `oauthScopes` and auto-derives `setupFlow` when not explicitly set.
    */
   private static _toClientAuth(raw: AdapterAuthConfig): ClientAuthConfig {
-    const flow: SetupFlow = raw.setupFlow ?? IntegrationHub._deriveSetupFlow(raw);
+    const flow: SetupFlow =
+      raw.setupFlow ?? IntegrationHub._deriveSetupFlow(raw);
     const result: ClientAuthConfig = { setupFlow: flow };
     if (raw.credentialInputs && raw.credentialInputs.length > 0) {
       result.fields = raw.credentialInputs;
@@ -183,12 +197,14 @@ export class IntegrationHub<
    */
   private static _deriveSetupFlow(raw: AdapterAuthConfig): SetupFlow {
     switch (raw.method) {
-      case 'oauth2':
-        return raw.credentialInputs?.length ? 'oauth_then_configure' : 'oauth_only';
-      case 'none':
-        return 'none';
+      case "oauth2":
+        return (raw.credentialInputs?.length ?? 0) > 0
+          ? "oauth_then_configure"
+          : "oauth_only";
+      case "none":
+        return "none";
       default:
-        return 'credential_form';
+        return "credential_form";
     }
   }
 
@@ -199,7 +215,9 @@ export class IntegrationHub<
    * Fires when any adapter emits a matching normalized event.
    */
   onEvent(eventTypeOrTypes: string | string[], handler: EventHandler): void {
-    const types = Array.isArray(eventTypeOrTypes) ? eventTypeOrTypes : [eventTypeOrTypes];
+    const types = Array.isArray(eventTypeOrTypes)
+      ? eventTypeOrTypes
+      : [eventTypeOrTypes];
     for (const type of types) {
       const existing = this._eventHandlers.get(type) ?? [];
       existing.push(handler);
@@ -217,53 +235,62 @@ export class IntegrationHub<
   /** Initialize all adapters — call onRegister then onReady. */
   async initialize(): Promise<void> {
     const logger = this.config.logger;
-    logger.info('IntegrationHub: initializing adapters');
+    logger.info("IntegrationHub: initializing adapters");
 
     for (const [id, adapter] of Object.entries(this.adapters)) {
-      const a = adapter as IntegrationAdapter;
+      const a = adapter;
       try {
         if (a.onRegister) {
           await a.onRegister(this._context);
         }
-        logger.info({ adapterId: id }, 'IntegrationHub: adapter registered');
+        logger.info({ adapterId: id }, "IntegrationHub: adapter registered");
       } catch (err) {
-        logger.error({ adapterId: id, err }, 'IntegrationHub: adapter onRegister failed');
+        logger.error(
+          { adapterId: id, err },
+          "IntegrationHub: adapter onRegister failed",
+        );
         throw err;
       }
     }
 
     for (const [id, adapter] of Object.entries(this.adapters)) {
-      const a = adapter as IntegrationAdapter;
+      const a = adapter;
       try {
         if (a.onReady) {
           await a.onReady(this._context);
         }
-        logger.info({ adapterId: id }, 'IntegrationHub: adapter ready');
+        logger.info({ adapterId: id }, "IntegrationHub: adapter ready");
       } catch (err) {
-        logger.error({ adapterId: id, err }, 'IntegrationHub: adapter onReady failed');
+        logger.error(
+          { adapterId: id, err },
+          "IntegrationHub: adapter onReady failed",
+        );
         throw err;
       }
     }
 
     logger.info(
       { adapters: this.getRegisteredAdapters() },
-      'IntegrationHub: all adapters ready',
+      "IntegrationHub: all adapters ready",
     );
   }
 
   /** Graceful shutdown — calls onShutdown on all adapters. */
   async shutdown(): Promise<void> {
     const logger = this.config.logger;
-    logger.info('IntegrationHub: shutting down');
+    logger.info("IntegrationHub: shutting down");
 
     await Promise.allSettled(
       Object.values(this.adapters).map(async (adapter) => {
-        const a = adapter as IntegrationAdapter;
+        const a = adapter;
         if (a.onShutdown) {
           try {
             await a.onShutdown();
           } catch (err) {
-            logger.error({ adapterId: a.id, err }, 'IntegrationHub: adapter onShutdown error');
+            logger.error(
+              { adapterId: a.id, err },
+              "IntegrationHub: adapter onShutdown error",
+            );
           }
         }
       }),
@@ -272,18 +299,23 @@ export class IntegrationHub<
 
   // ── Internal: Webhook Routing ─────────────────────────────────────────────
 
-  private async _handleWebhook(
+  private _handleWebhook(
     adapterId: string,
     request: WebhookRequest,
     options?: WebhookHandlerOptions,
-  ): Promise<WebhookResponse> {
-    const adapter = (this.adapters as Record<string, IntegrationAdapter>)[adapterId];
-    if (!adapter) {
-      return { statusCode: 404, body: { error: `Unknown adapter: ${adapterId}` } };
+  ): WebhookResponse {
+    const adapter = (
+      this.adapters as Record<string, IntegrationAdapter | undefined>
+    )[adapterId];
+    if (adapter == null) {
+      return {
+        statusCode: 404,
+        body: { error: `Unknown adapter: ${adapterId}` },
+      };
     }
 
     const handler = adapter.webhook;
-    const secret = options?.secret ?? '';
+    const secret = options?.secret ?? "";
 
     // 1. Verify signature
     const verified = handler.verifySignature({
@@ -292,12 +324,15 @@ export class IntegrationHub<
       secret,
     });
     if (!verified) {
-      return { statusCode: 401, body: { error: 'Invalid webhook signature' } };
+      return { statusCode: 401, body: { error: "Invalid webhook signature" } };
     }
 
     // 2. Check for synchronous challenge responses (Slack url_verification)
     if (handler.handleSynchronous) {
-      const sync = handler.handleSynchronous({ body: request.body, headers: request.headers });
+      const sync = handler.handleSynchronous({
+        body: request.body,
+        headers: request.headers,
+      });
       if (sync) {
         if (!sync.skipAsyncProcessing) {
           // Process in background, respond synchronously
@@ -316,8 +351,11 @@ export class IntegrationHub<
       options.waitUntil(asyncWork);
     } else {
       // Fire-and-forget with error logging
-      asyncWork.catch((err) => {
-        this.config.logger.error({ adapterId, err }, 'IntegrationHub: async webhook processing failed');
+      asyncWork.catch((err: unknown) => {
+        this.config.logger.error(
+          { adapterId, err },
+          "IntegrationHub: async webhook processing failed",
+        );
       });
     }
 
@@ -340,7 +378,8 @@ export class IntegrationHub<
   private async _dispatch(event: IntegrationEvent): Promise<void> {
     const ctx: EventContext = {
       hub: this,
-      getAdapter: (key) => (this.adapters as Record<string, IntegrationAdapter>)[key] as IntegrationAdapter,
+      getAdapter: (key) =>
+        (this.adapters as Record<string, IntegrationAdapter>)[key],
       logger: this.config.logger,
     };
 
@@ -350,8 +389,8 @@ export class IntegrationHub<
     const all = this._wildcardHandlers;
 
     await Promise.allSettled([
-      ...specific.map((h) => h(event, ctx)),
-      ...all.map((h) => h(event, ctx)),
+      ...specific.map(async (h) => h(event, ctx)),
+      ...all.map(async (h) => h(event, ctx)),
     ]);
   }
 }

@@ -1,18 +1,23 @@
-import type { TokenSet, VitalMetricType } from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
-import type { GooglePlayAdapterConfig } from '../types.js';
+import type { TokenSet, VitalMetricType } from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
+import type { GooglePlayAdapterConfig } from "../types.js";
 
-const BASE_URL = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
-const UPLOAD_BASE_URL = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3';
-const REPORTING_URL = 'https://playdeveloperreporting.googleapis.com/v1beta1';
+const BASE_URL = "https://androidpublisher.googleapis.com/androidpublisher/v3";
+const UPLOAD_BASE_URL =
+  "https://androidpublisher.googleapis.com/upload/androidpublisher/v3";
+const REPORTING_URL = "https://playdeveloperreporting.googleapis.com/v1beta1";
 
 export { BASE_URL, UPLOAD_BASE_URL, REPORTING_URL };
 
-export const ALL_TRACKS = ['production', 'beta', 'alpha', 'internal'] as const;
+export const ALL_TRACKS = ["production", "beta", "alpha", "internal"] as const;
 
 export interface GooglePlayContext {
   config: GooglePlayAdapterConfig;
-  gpRequest<T = any>(tokens: TokenSet, url: string, init?: RequestInit): Promise<T>;
+  gpRequest<T = any>(
+    tokens: TokenSet,
+    url: string,
+    init?: RequestInit,
+  ): Promise<T>;
   gpUpload<T = any>(
     tokens: TokenSet,
     path: string,
@@ -29,7 +34,9 @@ export interface GooglePlayContext {
   vitalsMetricSet(metric: VitalMetricType): string;
 }
 
-export function createGooglePlayContext(config: GooglePlayAdapterConfig): GooglePlayContext {
+export function createGooglePlayContext(
+  config: GooglePlayAdapterConfig,
+): GooglePlayContext {
   async function gpRequest<T = any>(
     tokens: TokenSet,
     url: string,
@@ -39,7 +46,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
       ...init,
       headers: {
         Authorization: `Bearer ${tokens.accessToken}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -47,7 +54,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     if (!res.ok) {
       const body = await res.text();
       throw new CapabilityError(
-        'google-play',
+        "google-play",
         `Google Play API ${res.status}: ${body}`,
         res.status === 429 || res.status >= 500,
       );
@@ -57,6 +64,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     return res.json() as Promise<T>;
   }
 
+  // eslint-disable-next-line max-params -- required parameters for this utility function
   async function gpUpload<T = any>(
     tokens: TokenSet,
     path: string,
@@ -64,14 +72,14 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     contentType: string,
     query?: Record<string, string>,
   ): Promise<T> {
-    const params = new URLSearchParams({ uploadType: 'media', ...query });
+    const params = new URLSearchParams({ uploadType: "media", ...query });
     const url = `${UPLOAD_BASE_URL}${path}?${params}`;
     const res = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${tokens.accessToken}`,
-        'Content-Type': contentType,
-        'Content-Length': String(file.size),
+        "Content-Type": contentType,
+        "Content-Length": String(file.size),
       },
       body: file,
     });
@@ -79,7 +87,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     if (!res.ok) {
       const body = await res.text();
       throw new CapabilityError(
-        'google-play',
+        "google-play",
         `Google Play Upload API ${res.status}: ${body}`,
         res.status === 429 || res.status >= 500,
       );
@@ -88,6 +96,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     return res.json() as Promise<T>;
   }
 
+  // eslint-disable-next-line max-params -- required parameters for this utility function
   async function withEdit<T>(
     tokens: TokenSet,
     packageName: string,
@@ -97,7 +106,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
     const edit = await gpRequest<{ id: string }>(
       tokens,
       `${BASE_URL}/applications/${packageName}/edits`,
-      { method: 'POST' },
+      { method: "POST" },
     );
     const editId = edit.id;
     try {
@@ -106,13 +115,13 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
         await gpRequest(
           tokens,
           `${BASE_URL}/applications/${packageName}/edits/${editId}:commit`,
-          { method: 'POST' },
+          { method: "POST" },
         );
       } else {
         await gpRequest(
           tokens,
           `${BASE_URL}/applications/${packageName}/edits/${editId}`,
-          { method: 'DELETE' },
+          { method: "DELETE" },
         ).catch(() => {});
       }
       return result;
@@ -120,7 +129,7 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
       await gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/edits/${editId}`,
-        { method: 'DELETE' },
+        { method: "DELETE" },
       ).catch(() => {});
       throw err;
     }
@@ -128,12 +137,18 @@ export function createGooglePlayContext(config: GooglePlayAdapterConfig): Google
 
   function vitalsMetricSet(metric: VitalMetricType): string {
     switch (metric) {
-      case 'crash_rate': return 'crashRateMetricSet';
-      case 'anr_rate': return 'anrRateMetricSet';
-      case 'launch_time': return 'slowStartRateMetricSet';
-      case 'excessive_wakeups': return 'excessiveWakeupRateMetricSet';
-      case 'stuck_background_worker': return 'stuckBackgroundWakelockRateMetricSet';
-      default: return 'crashRateMetricSet';
+      case "crash_rate":
+        return "crashRateMetricSet";
+      case "anr_rate":
+        return "anrRateMetricSet";
+      case "launch_time":
+        return "slowStartRateMetricSet";
+      case "excessive_wakeups":
+        return "excessiveWakeupRateMetricSet";
+      case "stuck_background_worker":
+        return "stuckBackgroundWakelockRateMetricSet";
+      default:
+        return "crashRateMetricSet";
     }
   }
 

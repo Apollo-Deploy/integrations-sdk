@@ -18,6 +18,6 @@ export interface MessageResult {
 }
 
 export interface MessageBlock {
-  type: 'section' | 'divider' | 'actions' | 'context';
+  type: "section" | "divider" | "actions" | "context";
   [key: string]: unknown;
 }

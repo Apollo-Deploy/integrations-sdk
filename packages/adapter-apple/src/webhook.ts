@@ -1,7 +1,10 @@
-import crypto from 'node:crypto';
-import type { WebhookHandler, IntegrationEvent } from '@apollo-deploy/integrations';
-import { mapAppleEvent } from './mappers/events.js';
-import type { AppleAdapterConfig } from './types.js';
+import crypto from "node:crypto";
+import type {
+  WebhookHandler,
+  IntegrationEvent,
+} from "@apollo-deploy/integrations";
+import { mapAppleEvent } from "./mappers/events.js";
+import type { AppleAdapterConfig } from "./types.js";
 
 interface AppleWebhookPayload {
   type: string;
@@ -16,24 +19,25 @@ interface AppleWebhookPayload {
 export function createAppleWebhook(config: AppleAdapterConfig): WebhookHandler {
   return {
     supportedEvents: [
-      'BUILD_UPLOAD_STATE_CHANGE',
-      'BUILD_BETA_STATE_CHANGE',
-      'APP_VERSION_STATE_CHANGE',
-      'TESTFLIGHT_FEEDBACK',
-      'BACKGROUND_ASSET_STATE_CHANGE',
+      "BUILD_UPLOAD_STATE_CHANGE",
+      "BUILD_BETA_STATE_CHANGE",
+      "APP_VERSION_STATE_CHANGE",
+      "TESTFLIGHT_FEEDBACK",
+      "BACKGROUND_ASSET_STATE_CHANGE",
     ],
 
     verifySignature({ rawBody, headers, secret }) {
-      const signature = headers['x-apple-signature'] ?? headers['x-appstoreconnect-signature'];
+      const signature =
+        headers["x-apple-signature"] ?? headers["x-appstoreconnect-signature"];
       if (!signature) return false;
 
       const webhookSecret = secret || config.webhookSecret;
       if (!webhookSecret) return false;
 
       const expected = crypto
-        .createHmac('sha256', webhookSecret)
+        .createHmac("sha256", webhookSecret)
         .update(rawBody)
-        .digest('hex');
+        .digest("hex");
 
       try {
         return crypto.timingSafeEqual(
@@ -51,7 +55,7 @@ export function createAppleWebhook(config: AppleAdapterConfig): WebhookHandler {
     },
 
     getDeliveryId(headers: Record<string, string>) {
-      return headers['x-apple-delivery-id'] ?? crypto.randomUUID();
+      return headers["x-apple-delivery-id"] ?? crypto.randomUUID();
     },
 
     handleSynchronous() {

@@ -8,11 +8,15 @@
  * - The `installationId` is stored in providerData, not as a refresh token.
  */
 
-import { Octokit } from '@octokit/rest';
-import { createAppAuth } from '@octokit/auth-app';
-import { OAuthError, TokenRefreshError } from '@apollo-deploy/integrations';
-import type { OAuthHandler, ProviderIdentity, PostAuthResult } from '@apollo-deploy/integrations';
-import type { GithubAdapterConfig } from './types.js';
+import { Octokit } from "@octokit/rest";
+import { createAppAuth } from "@octokit/auth-app";
+import { OAuthError, TokenRefreshError } from "@apollo-deploy/integrations";
+import type {
+  OAuthHandler,
+  ProviderIdentity,
+  PostAuthResult,
+} from "@apollo-deploy/integrations";
+import type { GithubAdapterConfig } from "./types.js";
 
 export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
   return {
@@ -31,22 +35,25 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
       // GitHub's installation flow provides an installation_id query param on callback.
       try {
         // Use GitHub's device/OAuth endpoint to get the installation ID from the code
-        const resp = await fetch('https://github.com/login/oauth/access_token', {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
+        const resp = await fetch(
+          "https://github.com/login/oauth/access_token",
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              client_id: config.clientId,
+              client_secret: config.clientSecret,
+              code,
+            }),
           },
-          body: JSON.stringify({
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            code,
-          }),
-        });
+        );
 
         if (!resp.ok) {
           const err = await resp.text();
-          throw new OAuthError('github', `OAuth code exchange failed: ${err}`);
+          throw new OAuthError("github", `OAuth code exchange failed: ${err}`);
         }
 
         const data = (await resp.json()) as {
@@ -58,13 +65,13 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
           installation_id?: number;
         };
 
-        if (data.error) {
-          throw new OAuthError('github', data.error_description ?? data.error);
+        if (data.error != null) {
+          throw new OAuthError("github", data.error_description ?? data.error);
         }
 
         return {
-          accessToken: data.access_token ?? '',
-          scope: data.scope ?? '',
+          accessToken: data.access_token ?? "",
+          scope: data.scope ?? "",
           expiresAt: new Date(Date.now() + 3600 * 1000),
           providerData: {
             installationId: data.installation_id,
@@ -72,8 +79,10 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
           },
         };
       } catch (err) {
-        if (err instanceof OAuthError) {throw err;}
-        throw new OAuthError('github', `Code exchange error: ${String(err)}`);
+        if (err instanceof OAuthError) {
+          throw err;
+        }
+        throw new OAuthError("github", `Code exchange error: ${String(err)}`);
       }
     },
 
@@ -89,14 +98,14 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
           privateKey: config.privateKey,
         });
 
-        const installationAuth = await auth({
-          type: 'installation',
+        const installationAuth = (await auth({
+          type: "installation",
           installationId: Number(installationId),
-        }) as { token: string; expiresAt: string };
+        })) as { token: string; expiresAt: string };
 
         return {
           accessToken: installationAuth.token,
-          scope: '',
+          scope: "",
           expiresAt: new Date(installationAuth.expiresAt),
           providerData: {
             installationId,
@@ -105,7 +114,7 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
         };
       } catch (err) {
         throw new TokenRefreshError(
-          'github',
+          "github",
           `Failed to regenerate installation token: ${String(err)}`,
         );
       }
@@ -115,21 +124,36 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
       try {
         const octokit = new Octokit({ auth: accessToken });
         const { data } = await octokit.rest.apps.getAuthenticated();
-        if (!data) throw new OAuthError('github', 'Failed to fetch GitHub App identity: empty response');
+        const appData = data as {
+          id: number;
+          name: string | undefined;
+          owner: Record<string, unknown> | undefined;
+          slug?: string;
+        } | null;
+        if (appData == null)
+          throw new OAuthError(
+            "github",
+            "Failed to fetch GitHub App identity: empty response",
+          );
         return {
-          providerAccountId: String(data.id),
-          displayName: data.name ?? (data as any).slug ?? 'GitHub App',
-          avatarUrl: (data.owner as any)?.avatar_url,
-          metadata: { slug: (data as any).slug },
+          providerAccountId: String(appData.id),
+          displayName: appData.name ?? appData.slug ?? "GitHub App",
+          avatarUrl: appData.owner?.avatar_url as string | undefined,
+          metadata: { slug: appData.slug },
         } satisfies ProviderIdentity;
       } catch (err) {
-        throw new OAuthError('github', `Failed to fetch GitHub identity: ${String(err)}`);
+        throw new OAuthError(
+          "github",
+          `Failed to fetch GitHub identity: ${String(err)}`,
+        );
       }
     },
 
     async afterAuthorize(tokens): Promise<PostAuthResult> {
-      const installationId = tokens.providerData.installationId as number;
-      if (!installationId) {
+      const installationId = tokens.providerData.installationId as
+        | number
+        | undefined;
+      if (installationId == null) {
         return { metadata: {} };
       }
 
@@ -139,13 +163,14 @@ export function createGithubOAuth(config: GithubAdapterConfig): OAuthHandler {
           privateKey: config.privateKey,
         });
 
-        const appAuth = await auth({ type: 'app' }) as { token: string };
+        const appAuth = (await auth({ type: "app" })) as { token: string };
         const octokit = new Octokit({ auth: `Bearer ${appAuth.token}` });
 
-        const { data } = await octokit.rest.apps.listReposAccessibleToInstallation({
-          installation_id: installationId,
-          per_page: 100,
-        });
+        const { data } =
+          await octokit.rest.apps.listReposAccessibleToInstallation({
+            installation_id: installationId,
+            per_page: 100,
+          });
 
         return {
           metadata: {

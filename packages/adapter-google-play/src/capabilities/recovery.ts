@@ -6,24 +6,34 @@ import type {
   CreateAppRecoveryRequest,
   AppRecoveryTargetingRequest,
   AppRecoveryListOpts,
-} from '@apollo-deploy/integrations';
-import type { GooglePlayContext } from './_context.js';
-import { BASE_URL } from './_context.js';
+} from "@apollo-deploy/integrations";
+import type { GooglePlayContext } from "./_context.js";
+import { BASE_URL } from "./_context.js";
 
-function mapGoogleRecoveryAction(packageName: string, raw: any): AppRecoveryAction {
+function mapGoogleRecoveryAction(
+  packageName: string,
+  raw: Record<string, any>,
+): AppRecoveryAction {
   return {
-    appRecoveryId: String(raw.appRecoveryId ?? raw.id ?? ''),
+    appRecoveryId: String(raw.appRecoveryId ?? raw.id ?? ""),
     appId: packageName,
-    status: raw.recoveryStatus ?? 'RECOVERY_STATUS_UNSPECIFIED',
+    status: raw.recoveryStatus ?? "RECOVERY_STATUS_UNSPECIFIED",
     targeting: raw.targeting
       ? {
           versionList: raw.targeting.versionList
-            ? { versionCodes: (raw.targeting.versionList.versionCodes ?? []).map(String) }
+            ? {
+                versionCodes: (
+                  raw.targeting.versionList.versionCodes ?? []
+                ).map(String),
+              }
             : undefined,
           versionRange: raw.targeting.versionRange
             ? {
-                versionCodeLowerBound: String(raw.targeting.versionRange.versionCodeLowerBound),
-                versionCodeUpperBound: raw.targeting.versionRange.versionCodeUpperBound
+                versionCodeLowerBound: String(
+                  raw.targeting.versionRange.versionCodeLowerBound,
+                ),
+                versionCodeUpperBound: raw.targeting.versionRange
+                  .versionCodeUpperBound
                   ? String(raw.targeting.versionRange.versionCodeUpperBound)
                   : undefined,
               }
@@ -37,7 +47,9 @@ function mapGoogleRecoveryAction(packageName: string, raw: any): AppRecoveryActi
     createTime: raw.createTime ? new Date(raw.createTime) : undefined,
     deployTime: raw.deployTime ? new Date(raw.deployTime) : undefined,
     cancelTime: raw.cancelTime ? new Date(raw.cancelTime) : undefined,
-    lastUpdateTime: raw.lastUpdateTime ? new Date(raw.lastUpdateTime) : undefined,
+    lastUpdateTime: raw.lastUpdateTime
+      ? new Date(raw.lastUpdateTime)
+      : undefined,
   };
 }
 
@@ -45,11 +57,11 @@ export function createGooglePlayRecovery(
   ctx: GooglePlayContext,
 ): Pick<
   AppStoreCapability,
-  | 'listAppRecoveryActions'
-  | 'createAppRecoveryAction'
-  | 'deployAppRecoveryAction'
-  | 'cancelAppRecoveryAction'
-  | 'addAppRecoveryTargeting'
+  | "listAppRecoveryActions"
+  | "createAppRecoveryAction"
+  | "deployAppRecoveryAction"
+  | "cancelAppRecoveryAction"
+  | "addAppRecoveryTargeting"
 > {
   return {
     async listAppRecoveryActions(
@@ -58,17 +70,19 @@ export function createGooglePlayRecovery(
       opts?: AppRecoveryListOpts,
     ): Promise<Paginated<AppRecoveryAction>> {
       const params = new URLSearchParams();
-      if (opts?.versionCode) params.set('versionCode', opts.versionCode);
-      if (opts?.limit) params.set('pageSize', String(opts.limit));
-      if (opts?.cursor) params.set('pageToken', opts.cursor);
+      if (opts?.versionCode) params.set("versionCode", opts.versionCode);
+      if (opts?.limit) params.set("pageSize", String(opts.limit));
+      if (opts?.cursor) params.set("pageToken", opts.cursor);
 
-      const data = await ctx.gpRequest<any>(
+      const data = await ctx.gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/appRecoveries?${params}`,
       );
 
       return {
-        items: (data?.recoveryActions ?? []).map((r: any) => mapGoogleRecoveryAction(packageName, r)),
+        items: (data?.recoveryActions ?? []).map((r: Record<string, any>) =>
+          mapGoogleRecoveryAction(packageName, r),
+        ),
         hasMore: !!data?.nextPageToken,
         cursor: data?.nextPageToken,
       };
@@ -79,7 +93,7 @@ export function createGooglePlayRecovery(
       packageName: string,
       request: CreateAppRecoveryRequest,
     ): Promise<AppRecoveryAction> {
-      const body: Record<string, any> = {
+      const body: Record<string, unknown> = {
         remediationMeasures: [{ type: request.remediationType }],
       };
 
@@ -100,10 +114,10 @@ export function createGooglePlayRecovery(
         };
       }
 
-      const raw = await ctx.gpRequest<any>(
+      const raw = await ctx.gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/appRecoveries:create`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: "POST", body: JSON.stringify(body) },
       );
 
       return mapGoogleRecoveryAction(packageName, raw);
@@ -114,10 +128,10 @@ export function createGooglePlayRecovery(
       packageName: string,
       recoveryId: string,
     ): Promise<AppRecoveryAction> {
-      const raw = await ctx.gpRequest<any>(
+      const raw = await ctx.gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:deploy`,
-        { method: 'POST', body: JSON.stringify({}) },
+        { method: "POST", body: JSON.stringify({}) },
       );
       return mapGoogleRecoveryAction(packageName, raw);
     },
@@ -127,21 +141,22 @@ export function createGooglePlayRecovery(
       packageName: string,
       recoveryId: string,
     ): Promise<AppRecoveryAction> {
-      const raw = await ctx.gpRequest<any>(
+      const raw = await ctx.gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:cancel`,
-        { method: 'POST', body: JSON.stringify({}) },
+        { method: "POST", body: JSON.stringify({}) },
       );
       return mapGoogleRecoveryAction(packageName, raw);
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async addAppRecoveryTargeting(
       tokens: TokenSet,
       packageName: string,
       recoveryId: string,
       targeting: AppRecoveryTargetingRequest,
     ): Promise<AppRecoveryAction> {
-      const body: Record<string, any> = {};
+      const body: Record<string, unknown> = {};
 
       if (targeting.versionCodes?.length) {
         body.versionList = { versionCodes: targeting.versionCodes };
@@ -156,10 +171,10 @@ export function createGooglePlayRecovery(
         body.androidSdks = { sdkLevels: targeting.androidSdkVersions };
       }
 
-      const raw = await ctx.gpRequest<any>(
+      const raw = await ctx.gpRequest(
         tokens,
         `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:addTargeting`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: "POST", body: JSON.stringify(body) },
       );
 
       return mapGoogleRecoveryAction(packageName, raw);

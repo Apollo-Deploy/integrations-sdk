@@ -6,16 +6,16 @@ import type {
   AppRecoveryTargetingRequest,
   AppRecoveryListOpts,
   Paginated,
-} from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
+} from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
 
 export function createAppleRecovery(): Pick<
   AppStoreCapability,
-  | 'listAppRecoveryActions'
-  | 'createAppRecoveryAction'
-  | 'deployAppRecoveryAction'
-  | 'cancelAppRecoveryAction'
-  | 'addAppRecoveryTargeting'
+  | "listAppRecoveryActions"
+  | "createAppRecoveryAction"
+  | "deployAppRecoveryAction"
+  | "cancelAppRecoveryAction"
+  | "addAppRecoveryTargeting"
 > {
   return {
     async listAppRecoveryActions(
@@ -24,8 +24,8 @@ export function createAppleRecovery(): Pick<
       _opts?: AppRecoveryListOpts,
     ): Promise<Paginated<AppRecoveryAction>> {
       throw new CapabilityError(
-        'apple',
-        'App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.',
+        "apple",
+        "App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.",
         false,
       );
     },
@@ -36,8 +36,8 @@ export function createAppleRecovery(): Pick<
       _request: CreateAppRecoveryRequest,
     ): Promise<AppRecoveryAction> {
       throw new CapabilityError(
-        'apple',
-        'App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.',
+        "apple",
+        "App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.",
         false,
       );
     },
@@ -48,8 +48,8 @@ export function createAppleRecovery(): Pick<
       _recoveryId: string,
     ): Promise<AppRecoveryAction> {
       throw new CapabilityError(
-        'apple',
-        'App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.',
+        "apple",
+        "App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.",
         false,
       );
     },
@@ -60,12 +60,13 @@ export function createAppleRecovery(): Pick<
       _recoveryId: string,
     ): Promise<AppRecoveryAction> {
       throw new CapabilityError(
-        'apple',
-        'App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.',
+        "apple",
+        "App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.",
         false,
       );
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async addAppRecoveryTargeting(
       _tokens: TokenSet,
       _appId: string,
@@ -73,8 +74,8 @@ export function createAppleRecovery(): Pick<
       _targeting: AppRecoveryTargetingRequest,
     ): Promise<AppRecoveryAction> {
       throw new CapabilityError(
-        'apple',
-        'App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.',
+        "apple",
+        "App Recovery is a Google Play–only feature and is not available for Apple App Store Connect.",
         false,
       );
     },

@@ -1,6 +1,4 @@
-import type {
-  BuildDeliverable,
-} from '@apollo-deploy/integrations';
+import type { BuildDeliverable } from "@apollo-deploy/integrations";
 
 /**
  * Map an Apple buildBundle resource to a list of BuildDeliverables.
@@ -12,22 +10,29 @@ import type {
  */
 export function mapAppleBuildBundleToDeliverables(
   buildId: string,
-  bundle: Record<string, any>,
+  bundle: Record<string, unknown>,
 ): BuildDeliverable[] {
   const deliverables: BuildDeliverable[] = [];
-  const attrs = bundle.attributes ?? {};
+  const bundleRecord = bundle as Record<string, any>;
+  const attrs = (bundleRecord.attributes ?? {}) as Record<string, any>;
 
   // App thinning size info — each entry is a device variant
-  const fileSizes = attrs.bundleFileSizes ?? [];
+  const fileSizes = (attrs.bundleFileSizes ?? []) as Record<string, any>[];
   for (const entry of fileSizes) {
-    const sizeAttrs = entry.attributes ?? entry;
+    const sizeAttrs = (entry.attributes ?? entry) as Record<string, any>;
     deliverables.push({
-      id: entry.id ?? `${bundle.id}:variant:${sizeAttrs.deviceModel ?? 'universal'}`,
+      id:
+        entry.id ??
+        `${bundleRecord.id}:variant:${sizeAttrs.deviceModel ?? "universal"}`,
       buildId,
-      type: 'app_thinning_variant',
-      variant: sizeAttrs.deviceModel ?? 'universal',
-      compressedSize: sizeAttrs.downloadBytes ? Number(sizeAttrs.downloadBytes) : undefined,
-      uncompressedSize: sizeAttrs.installBytes ? Number(sizeAttrs.installBytes) : undefined,
+      type: "app_thinning_variant",
+      variant: sizeAttrs.deviceModel ?? "universal",
+      compressedSize: sizeAttrs.downloadBytes
+        ? Number(sizeAttrs.downloadBytes)
+        : undefined,
+      uncompressedSize: sizeAttrs.installBytes
+        ? Number(sizeAttrs.installBytes)
+        : undefined,
       downloadable: !!sizeAttrs.downloadUrl,
       downloadUrl: sizeAttrs.downloadUrl,
     });
@@ -36,9 +41,9 @@ export function mapAppleBuildBundleToDeliverables(
   // dSYMs are listed as sub-resources
   if (attrs.hasDsyms || attrs.dSYMUrl) {
     deliverables.push({
-      id: `${bundle.id}:dsym`,
+      id: `${bundleRecord.id}:dsym`,
       buildId,
-      type: 'dsym',
+      type: "dsym",
       variant: undefined,
       downloadable: !!attrs.dSYMUrl,
       downloadUrl: attrs.dSYMUrl,
@@ -48,9 +53,9 @@ export function mapAppleBuildBundleToDeliverables(
   // Bitcode symbol maps
   if (attrs.hasBitcode) {
     deliverables.push({
-      id: `${bundle.id}:bitcode`,
+      id: `${bundleRecord.id}:bitcode`,
       buildId,
-      type: 'bitcode_compilation_log',
+      type: "bitcode_compilation_log",
       variant: undefined,
       downloadable: false,
     });
@@ -59,10 +64,10 @@ export function mapAppleBuildBundleToDeliverables(
   // If bundle has includesSymbols but no explicit dSYM URL, still note it
   if (attrs.includesSymbols && !attrs.dSYMUrl && !attrs.hasDsyms) {
     deliverables.push({
-      id: `${bundle.id}:symbols`,
+      id: `${bundleRecord.id}:symbols`,
       buildId,
-      type: 'dsym',
-      variant: 'embedded',
+      type: "dsym",
+      variant: "embedded",
       downloadable: false,
     });
   }
@@ -75,16 +80,21 @@ export function mapAppleBuildBundleToDeliverables(
  */
 export function mapAppleBundleFileSizeToDeliverable(
   buildId: string,
-  raw: Record<string, any>,
+  raw: Record<string, unknown>,
 ): BuildDeliverable {
-  const attrs = raw.attributes ?? {};
+  const rawRecord = raw as Record<string, any>;
+  const attrs = (rawRecord.attributes ?? {}) as Record<string, any>;
   return {
-    id: raw.id,
+    id: rawRecord.id,
     buildId,
-    type: 'app_thinning_variant',
-    variant: attrs.deviceModel ?? 'universal',
-    compressedSize: attrs.downloadBytes ? Number(attrs.downloadBytes) : undefined,
-    uncompressedSize: attrs.installBytes ? Number(attrs.installBytes) : undefined,
+    type: "app_thinning_variant",
+    variant: attrs.deviceModel ?? "universal",
+    compressedSize: attrs.downloadBytes
+      ? Number(attrs.downloadBytes)
+      : undefined,
+    uncompressedSize: attrs.installBytes
+      ? Number(attrs.installBytes)
+      : undefined,
     downloadable: !!attrs.downloadUrl,
     downloadUrl: attrs.downloadUrl,
   };

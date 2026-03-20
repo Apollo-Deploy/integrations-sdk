@@ -1,4 +1,4 @@
-import type { ActorInfo, PaginationOpts } from './shared.js';
+import type { ActorInfo, PaginationOpts } from "./shared.js";
 
 // ─── Source Control ───────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ export interface Commit {
 }
 
 export interface CommitStatusInput {
-  state: 'pending' | 'success' | 'failure' | 'error';
+  state: "pending" | "success" | "failure" | "error";
   targetUrl?: string;
   description?: string;
   context: string;

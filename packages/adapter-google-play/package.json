@@ -19,7 +19,8 @@
     "dev": "tsc --build --watch",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@apollo-deploy/integrations": "workspace:*"

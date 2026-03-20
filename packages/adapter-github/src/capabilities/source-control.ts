@@ -3,22 +3,36 @@
  * Uses @octokit/rest as the HTTP client.
  */
 
-import { Octokit } from '@octokit/rest';
-import type { SourceControlCapability } from '@apollo-deploy/integrations';
-import type { TokenSet, PaginationOpts, CommitListOpts, CommitStatusInput } from '@apollo-deploy/integrations';
-import { mapRepository, mapBranch, mapPullRequest, mapCommit } from '../mappers/models.js';
-import { mapGithubError } from '../mappers/errors.js';
-import type { GithubAdapterConfig } from '../types.js';
+import { Octokit } from "@octokit/rest";
+import type { SourceControlCapability } from "@apollo-deploy/integrations";
+import type {
+  TokenSet,
+  PaginationOpts,
+  CommitListOpts,
+  CommitStatusInput,
+} from "@apollo-deploy/integrations";
+import {
+  mapRepository,
+  mapBranch,
+  mapPullRequest,
+  mapCommit,
+} from "../mappers/models.js";
+import { mapGithubError } from "../mappers/errors.js";
+import type { GithubAdapterConfig } from "../types.js";
 
-export function createGithubSourceControl(_config: GithubAdapterConfig): SourceControlCapability {
-  function client(tokens: TokenSet) {
+export function createGithubSourceControl(
+  _config: GithubAdapterConfig,
+): SourceControlCapability {
+  function client(tokens: TokenSet): Octokit {
     return new Octokit({ auth: tokens.accessToken });
   }
 
   function parseRepoId(repoId: string): { owner: string; repo: string } {
-    const [owner, repo] = repoId.split('/');
-    if (!owner || !repo) {
-      throw new Error(`Invalid GitHub repoId '${repoId}'. Expected 'owner/repo'.`);
+    const [owner, repo] = repoId.split("/");
+    if (owner === "" || repo === "") {
+      throw new Error(
+        `Invalid GitHub repoId '${repoId}'. Expected 'owner/repo'.`,
+      );
     }
     return { owner, repo };
   }
@@ -28,16 +42,18 @@ export function createGithubSourceControl(_config: GithubAdapterConfig): SourceC
       try {
         const octokit = client(tokens);
         const perPage = opts?.limit ?? 30;
-        const page = opts?.cursor ? Number(opts.cursor) : 1;
+        const page = opts?.cursor != null ? Number(opts.cursor) : 1;
 
         const { data } = await octokit.rest.repos.listForAuthenticatedUser({
           per_page: perPage,
           page,
-          sort: 'updated',
+          sort: "updated",
         });
 
         return {
-          items: data.map((r) => mapRepository(r as unknown as Record<string, unknown>)),
+          items: data.map((r) =>
+            mapRepository(r as unknown as Record<string, unknown>),
+          ),
           hasMore: data.length === perPage,
           cursor: data.length === perPage ? String(page + 1) : undefined,
         };
@@ -61,20 +77,22 @@ export function createGithubSourceControl(_config: GithubAdapterConfig): SourceC
       try {
         const { owner, repo } = parseRepoId(repoId);
         const octokit = client(tokens);
-        const perPage = opts?.limit ?? 30;
-        const page = opts?.cursor ? Number(opts.cursor) : 1;
+        const perPage2 = opts?.limit ?? 30;
+        const page2 = opts?.cursor != null ? Number(opts.cursor) : 1;
 
         const { data } = await octokit.rest.repos.listBranches({
           owner,
           repo,
-          per_page: perPage,
-          page,
+          per_page: perPage2,
+          page: page2,
         });
 
         return {
-          items: data.map((b) => mapBranch(b as unknown as Record<string, unknown>)),
-          hasMore: data.length === perPage,
-          cursor: data.length === perPage ? String(page + 1) : undefined,
+          items: data.map((b) =>
+            mapBranch(b as unknown as Record<string, unknown>),
+          ),
+          hasMore: data.length === perPage2,
+          cursor: data.length === perPage2 ? String(page2 + 1) : undefined,
         };
       } catch (err) {
         throw mapGithubError(err);
@@ -85,13 +103,18 @@ export function createGithubSourceControl(_config: GithubAdapterConfig): SourceC
       try {
         const { owner, repo } = parseRepoId(repoId);
         const octokit = client(tokens);
-        const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+        const { data } = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber,
+        });
         return mapPullRequest(data as unknown as Record<string, unknown>);
       } catch (err) {
         throw mapGithubError(err);
       }
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async createCommitStatus(tokens, repoId, sha, status: CommitStatusInput) {
       try {
         const { owner, repo } = parseRepoId(repoId);
@@ -114,8 +137,8 @@ export function createGithubSourceControl(_config: GithubAdapterConfig): SourceC
       try {
         const { owner, repo } = parseRepoId(repoId);
         const octokit = client(tokens);
-        const perPage = opts?.limit ?? 30;
-        const page = opts?.cursor ? Number(opts.cursor) : 1;
+        const perPage3 = opts?.limit ?? 30;
+        const page3 = opts?.cursor != null ? Number(opts.cursor) : 1;
 
         const { data } = await octokit.rest.repos.listCommits({
           owner,
@@ -123,14 +146,16 @@ export function createGithubSourceControl(_config: GithubAdapterConfig): SourceC
           sha: opts?.branch,
           since: opts?.since?.toISOString(),
           until: opts?.until?.toISOString(),
-          per_page: perPage,
-          page,
+          per_page: perPage3,
+          page: page3,
         });
 
         return {
-          items: data.map((c) => mapCommit(c as unknown as Record<string, unknown>)),
-          hasMore: data.length === perPage,
-          cursor: data.length === perPage ? String(page + 1) : undefined,
+          items: data.map((c) =>
+            mapCommit(c as unknown as Record<string, unknown>),
+          ),
+          hasMore: data.length === perPage3,
+          cursor: data.length === perPage3 ? String(page3 + 1) : undefined,
         };
       } catch (err) {
         throw mapGithubError(err);

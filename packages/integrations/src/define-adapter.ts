@@ -26,13 +26,14 @@ import type {
   AdapterMetadata,
   IntegrationAdapter,
   TokenMetadata,
-} from './types/adapter.js';
-import type { OAuthHandler } from './types/oauth.js';
-import type { WebhookHandler } from './types/webhook.js';
-import type { SourceControlCapability } from './types/capabilities/source-control.js';
-import type { MessagingCapability } from './types/capabilities/messaging.js';
-import type { IssueTrackingCapability } from './types/capabilities/issue-tracking.js';
-import type { AppStoreCapability } from './types/capabilities/app-store.js';
+} from "./types/adapter.js";
+import type { OAuthHandler } from "./types/oauth.js";
+import type { WebhookHandler } from "./types/webhook.js";
+import type { SourceControlCapability } from "./types/capabilities/source-control.js";
+import type { MessagingCapability } from "./types/capabilities/messaging.js";
+import type { IssueTrackingCapability } from "./types/capabilities/issue-tracking.js";
+import type { AppStoreCapability } from "./types/capabilities/app-store.js";
+import type { MonitoringCapability } from "./types/capabilities/monitoring.js";
 
 export interface AdapterDefinition<TConfig> {
   id: string;
@@ -50,6 +51,7 @@ export interface AdapterDefinition<TConfig> {
   createMessaging?(config: TConfig): MessagingCapability;
   createIssueTracking?(config: TConfig): IssueTrackingCapability;
   createAppStore?(config: TConfig): AppStoreCapability;
+  createMonitoring?(config: TConfig): MonitoringCapability;
 
   // Lifecycle hooks
   onRegister?(config: TConfig, context: AdapterContext): void | Promise<void>;
@@ -99,20 +101,24 @@ export function defineAdapter<TConfig>(
       oauth: definition.createOAuthHandler(config),
       webhook: definition.createWebhookHandler(config),
 
-      sourceControl: definition.capabilities.includes('source-control')
+      sourceControl: definition.capabilities.includes("source-control")
         ? definition.createSourceControl?.(config)
         : undefined,
 
-      messaging: definition.capabilities.includes('messaging')
+      messaging: definition.capabilities.includes("messaging")
         ? definition.createMessaging?.(config)
         : undefined,
 
-      issueTracking: definition.capabilities.includes('issue-tracking')
+      issueTracking: definition.capabilities.includes("issue-tracking")
         ? definition.createIssueTracking?.(config)
         : undefined,
 
-      appStore: definition.capabilities.includes('app-store')
+      appStore: definition.capabilities.includes("app-store")
         ? definition.createAppStore?.(config)
+        : undefined,
+
+      monitoring: definition.capabilities.includes("monitoring")
+        ? definition.createMonitoring?.(config)
         : undefined,
 
       supports(capability: AdapterCapability): boolean {
@@ -136,7 +142,7 @@ export function defineAdapter<TConfig>(
   };
 
   // Attach static metadata onto the factory function
-  Object.defineProperty(factory, 'definition', {
+  Object.defineProperty(factory, "definition", {
     value: Object.freeze({
       id: definition.id,
       name: definition.name,

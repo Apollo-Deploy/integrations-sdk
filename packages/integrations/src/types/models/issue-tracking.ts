@@ -1,4 +1,4 @@
-import type { ActorInfo, PaginationOpts } from './shared.js';
+import type { ActorInfo, PaginationOpts } from "./shared.js";
 
 // ─── Issue Tracking ───────────────────────────────────────────────────────────
 

@@ -7,22 +7,29 @@
  * - teamId + teamName stored in providerData for display and dedup.
  */
 
-import { OAuthError, TokenRefreshError } from '@apollo-deploy/integrations';
-import type { OAuthHandler, ProviderIdentity } from '@apollo-deploy/integrations';
-import type { SlackAdapterConfig } from './types.js';
+import { OAuthError, TokenRefreshError } from "@apollo-deploy/integrations";
+import type {
+  OAuthHandler,
+  ProviderIdentity,
+} from "@apollo-deploy/integrations";
+import type { SlackAdapterConfig } from "./types.js";
 
-const SLACK_OAUTH_TOKEN_URL = 'https://slack.com/api/oauth.v2.access';
+const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 
 export function createSlackOAuth(config: SlackAdapterConfig): OAuthHandler {
-  const botScopes = config.scopes ?? ['chat:write', 'channels:read', 'channels:history'];
+  const botScopes = config.scopes ?? [
+    "chat:write",
+    "channels:read",
+    "channels:history",
+  ];
   const userScopes = config.userScopes ?? [];
 
   return {
     getAuthorizationUrl({ state, redirectUri }) {
       const params = new URLSearchParams({
         client_id: config.clientId,
-        scope: botScopes.join(','),
-        user_scope: userScopes.join(','),
+        scope: botScopes.join(","),
+        user_scope: userScopes.join(","),
         redirect_uri: redirectUri,
         state,
       });
@@ -30,20 +37,25 @@ export function createSlackOAuth(config: SlackAdapterConfig): OAuthHandler {
     },
 
     async exchangeCode({ code, redirectUri }) {
-      const credentials = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64');
+      const credentials = Buffer.from(
+        `${config.clientId}:${config.clientSecret}`,
+      ).toString("base64");
       const body = new URLSearchParams({ code, redirect_uri: redirectUri });
 
       const resp = await fetch(SLACK_OAUTH_TOKEN_URL, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Basic ${credentials}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
+          "Content-Type": "application/x-www-form-urlencoded",
         },
         body: body.toString(),
       });
 
       if (!resp.ok) {
-        throw new OAuthError('slack', `Token exchange HTTP error: ${resp.status}`);
+        throw new OAuthError(
+          "slack",
+          `Token exchange HTTP error: ${String(resp.status)}`,
+        );
       }
 
       const data = (await resp.json()) as {
@@ -64,13 +76,13 @@ export function createSlackOAuth(config: SlackAdapterConfig): OAuthHandler {
         incoming_webhook?: { channel: string; url: string };
       };
 
-      if (!data.ok || !data.access_token) {
-        throw new OAuthError('slack', data.error ?? 'Token exchange failed');
+      if (!data.ok || data.access_token == null || data.access_token === "") {
+        throw new OAuthError("slack", data.error ?? "Token exchange failed");
       }
 
       return {
         accessToken: data.access_token,
-        scope: data.scope ?? '',
+        scope: data.scope ?? "",
         providerData: {
           teamId: data.team?.id,
           teamName: data.team?.name,
@@ -82,18 +94,18 @@ export function createSlackOAuth(config: SlackAdapterConfig): OAuthHandler {
       };
     },
 
-    async refreshToken(_refreshToken) {
+    refreshToken(_refreshToken) {
       // Slack does not support standard OAuth token refresh.
       // Tokens are long-lived unless rotation is explicitly enabled.
       throw new TokenRefreshError(
-        'slack',
-        'Slack tokens do not support refresh. Re-authorise the connection.',
+        "slack",
+        "Slack tokens do not support refresh. Re-authorise the connection.",
         false,
       );
     },
 
     async getIdentity(accessToken) {
-      const resp = await fetch('https://slack.com/api/auth.test', {
+      const resp = await fetch("https://slack.com/api/auth.test", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = (await resp.json()) as {
@@ -106,12 +118,15 @@ export function createSlackOAuth(config: SlackAdapterConfig): OAuthHandler {
       };
 
       if (!data.ok) {
-        throw new OAuthError('slack', data.error ?? 'Failed to get Slack identity');
+        throw new OAuthError(
+          "slack",
+          data.error ?? "Failed to get Slack identity",
+        );
       }
 
       return {
-        providerAccountId: data.user_id ?? '',
-        displayName: data.user ?? data.team ?? 'Slack',
+        providerAccountId: data.user_id ?? "",
+        displayName: data.user ?? data.team ?? "Slack",
         metadata: { teamId: data.team_id, team: data.team },
       } satisfies ProviderIdentity;
     },

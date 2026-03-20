@@ -1,4 +1,4 @@
-import type { AdapterCapability } from '../adapter.js';
+import type { AdapterCapability } from "../adapter.js";
 
 // ─── Universal Domain Models ──────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export interface Connection {
   updatedAt: Date;
 }
 
-export type ConnectionStatus = 'active' | 'expired' | 'revoked' | 'error';
+export type ConnectionStatus = "active" | "expired" | "revoked" | "error";
 
 export interface ActorInfo {
   id: string;

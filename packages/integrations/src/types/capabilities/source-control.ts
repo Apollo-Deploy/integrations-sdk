@@ -7,8 +7,8 @@ import type {
   PaginationOpts,
   PullRequest,
   Repository,
-} from '../models/index.js';
-import type { TokenSet } from '../oauth.js';
+} from "../models/index.js";
+import type { TokenSet } from "../oauth.js";
 
 /**
  * Source-control capability.
@@ -17,10 +17,30 @@ import type { TokenSet } from '../oauth.js';
  * All methods receive tokens as a parameter — adapters are stateless.
  */
 export interface SourceControlCapability {
-  listRepositories(tokens: TokenSet, opts?: PaginationOpts): Promise<Paginated<Repository>>;
+  listRepositories(
+    tokens: TokenSet,
+    opts?: PaginationOpts,
+  ): Promise<Paginated<Repository>>;
   getRepository(tokens: TokenSet, repoId: string): Promise<Repository>;
-  listBranches(tokens: TokenSet, repoId: string, opts?: PaginationOpts): Promise<Paginated<Branch>>;
-  getPullRequest(tokens: TokenSet, repoId: string, prNumber: number): Promise<PullRequest>;
-  createCommitStatus(tokens: TokenSet, repoId: string, sha: string, status: CommitStatusInput): Promise<void>;
-  listCommits(tokens: TokenSet, repoId: string, opts?: CommitListOpts): Promise<Paginated<Commit>>;
+  listBranches(
+    tokens: TokenSet,
+    repoId: string,
+    opts?: PaginationOpts,
+  ): Promise<Paginated<Branch>>;
+  getPullRequest(
+    tokens: TokenSet,
+    repoId: string,
+    prNumber: number,
+  ): Promise<PullRequest>;
+  createCommitStatus(
+    tokens: TokenSet,
+    repoId: string,
+    sha: string,
+    status: CommitStatusInput,
+  ): Promise<void>;
+  listCommits(
+    tokens: TokenSet,
+    repoId: string,
+    opts?: CommitListOpts,
+  ): Promise<Paginated<Commit>>;
 }

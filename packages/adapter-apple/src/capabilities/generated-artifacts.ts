@@ -5,17 +5,22 @@ import type {
   GeneratedArtifactsListOpts,
   BuildDeliverablesResult,
   BuildDeliverable,
-} from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
+} from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
 import {
   mapAppleBuildBundleToDeliverables,
   mapAppleBundleFileSizeToDeliverable,
-} from '../mappers/generated-artifacts.js';
-import type { AppleContext } from './_context.js';
+} from "../mappers/generated-artifacts.js";
+import type { AppleContext } from "./_context.js";
 
 export function createAppleGeneratedArtifacts(
   ctx: AppleContext,
-): Pick<AppStoreCapability, 'listGeneratedArtifacts' | 'downloadGeneratedArtifact' | 'listBuildDeliverables'> {
+): Pick<
+  AppStoreCapability,
+  | "listGeneratedArtifacts"
+  | "downloadGeneratedArtifact"
+  | "listBuildDeliverables"
+> {
   return {
     /**
      * List generated artifacts — Apple equivalent.
@@ -35,8 +40,8 @@ export function createAppleGeneratedArtifacts(
       const buildId = opts.versionCode;
       if (!buildId) {
         throw new CapabilityError(
-          'apple',
-          'versionCode (build ID) is required to list build deliverables.',
+          "apple",
+          "versionCode (build ID) is required to list build deliverables.",
           false,
         );
       }
@@ -48,7 +53,7 @@ export function createAppleGeneratedArtifacts(
       );
 
       const bundles = (data.included ?? []).filter(
-        (r: any) => r.type === 'buildBundles',
+        (r: Record<string, unknown>) => r.type === "buildBundles",
       );
 
       // For each bundle, get file sizes (app thinning variants)
@@ -61,23 +66,32 @@ export function createAppleGeneratedArtifacts(
             `/buildBundles/${bundle.id}/buildBundleFileSizes?limit=200`,
           );
           for (const fs of fileSizes.data ?? []) {
-            allDeliverables.push(mapAppleBundleFileSizeToDeliverable(buildId, fs));
+            allDeliverables.push(
+              mapAppleBundleFileSizeToDeliverable(buildId, fs),
+            );
           }
         } catch {
           // File sizes may not be available; fall back to bundle-level info
-          allDeliverables.push(...mapAppleBuildBundleToDeliverables(buildId, bundle));
+          allDeliverables.push(
+            ...mapAppleBuildBundleToDeliverables(buildId, bundle),
+          );
         }
 
         // Fetch dSYMs
         try {
-          const dsyms = await ctx.appleRequest(tokens, `/buildBundles/${bundle.id}/dSYMs`);
+          const dsyms = await ctx.appleRequest(
+            tokens,
+            `/buildBundles/${bundle.id}/dSYMs`,
+          );
           for (const dsym of dsyms.data ?? []) {
             allDeliverables.push({
               id: dsym.id,
               buildId,
-              type: 'dsym',
+              type: "dsym",
               variant: dsym.attributes?.platformName,
-              compressedSize: dsym.attributes?.fileSize ? Number(dsym.attributes.fileSize) : undefined,
+              compressedSize: dsym.attributes?.fileSize
+                ? Number(dsym.attributes.fileSize)
+                : undefined,
               downloadable: !!dsym.attributes?.downloadUrl,
               downloadUrl: dsym.attributes?.downloadUrl,
             });
@@ -94,7 +108,7 @@ export function createAppleGeneratedArtifacts(
         versionCode: buildId,
         signingKeys: [
           {
-            certificateSha256Hash: 'apple-code-signing',
+            certificateSha256Hash: "apple-code-signing",
             generatedSplitApks: [],
             generatedStandaloneApks: [],
             generatedUniversalApk: undefined,
@@ -103,16 +117,16 @@ export function createAppleGeneratedArtifacts(
             targetingInfo: {
               packageName: appId,
               variants: allDeliverables
-                .filter((d) => d.type === 'app_thinning_variant')
+                .filter((d) => d.type === "app_thinning_variant")
                 .map((d, i) => ({
                   variantNumber: i,
                   targeting: undefined,
                   modules: [
                     {
-                      name: 'base',
+                      name: "base",
                       artifacts: [
                         {
-                          path: d.variant ?? 'universal',
+                          path: d.variant ?? "universal",
                         },
                       ],
                     },
@@ -132,6 +146,7 @@ export function createAppleGeneratedArtifacts(
      * download URL. The downloadId should be the deliverable's download URL
      * or the buildBundleFileSize ID.
      */
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async downloadGeneratedArtifact(
       tokens: TokenSet,
       _appId: string,
@@ -139,11 +154,11 @@ export function createAppleGeneratedArtifacts(
       downloadId: string,
     ): Promise<Response> {
       // If downloadId looks like a URL, fetch directly
-      if (downloadId.startsWith('http')) {
+      if (downloadId.startsWith("http")) {
         const res = await fetch(downloadId);
         if (!res.ok) {
           throw new CapabilityError(
-            'apple',
+            "apple",
             `Failed to download deliverable: ${res.status}`,
             res.status === 429,
           );
@@ -152,11 +167,14 @@ export function createAppleGeneratedArtifacts(
       }
 
       // Otherwise, treat as a buildBundleFileSizes ID and look up the URL
-      const data = await ctx.appleRequest(tokens, `/buildBundleFileSizes/${downloadId}`);
+      const data = await ctx.appleRequest(
+        tokens,
+        `/buildBundleFileSizes/${downloadId}`,
+      );
       const url = data.data?.attributes?.downloadUrl;
       if (!url) {
         throw new CapabilityError(
-          'apple',
+          "apple",
           `No download URL available for deliverable ${downloadId}. The artifact may still be processing.`,
           false,
         );
@@ -165,7 +183,7 @@ export function createAppleGeneratedArtifacts(
       const res = await fetch(url);
       if (!res.ok) {
         throw new CapabilityError(
-          'apple',
+          "apple",
           `Failed to download deliverable: ${res.status}`,
           res.status === 429,
         );
@@ -189,7 +207,7 @@ export function createAppleGeneratedArtifacts(
       );
 
       const bundles = (data.included ?? []).filter(
-        (r: any) => r.type === 'buildBundles',
+        (r: Record<string, unknown>) => r.type === "buildBundles",
       );
 
       const deliverables: BuildDeliverable[] = [];
@@ -205,19 +223,26 @@ export function createAppleGeneratedArtifacts(
             deliverables.push(mapAppleBundleFileSizeToDeliverable(buildId, fs));
           }
         } catch {
-          deliverables.push(...mapAppleBuildBundleToDeliverables(buildId, bundle));
+          deliverables.push(
+            ...mapAppleBuildBundleToDeliverables(buildId, bundle),
+          );
         }
 
         // Fetch dSYMs
         try {
-          const dsyms = await ctx.appleRequest(tokens, `/buildBundles/${bundle.id}/dSYMs`);
+          const dsyms = await ctx.appleRequest(
+            tokens,
+            `/buildBundles/${bundle.id}/dSYMs`,
+          );
           for (const dsym of dsyms.data ?? []) {
             deliverables.push({
               id: dsym.id,
               buildId,
-              type: 'dsym',
+              type: "dsym",
               variant: dsym.attributes?.platformName,
-              compressedSize: dsym.attributes?.fileSize ? Number(dsym.attributes.fileSize) : undefined,
+              compressedSize: dsym.attributes?.fileSize
+                ? Number(dsym.attributes.fileSize)
+                : undefined,
               downloadable: !!dsym.attributes?.downloadUrl,
               downloadUrl: dsym.attributes?.downloadUrl,
             });

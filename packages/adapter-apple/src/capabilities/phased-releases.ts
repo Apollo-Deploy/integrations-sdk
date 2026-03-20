@@ -6,49 +6,73 @@ import type {
   CreatePhasedReleaseRequest,
   UpdatePhasedReleaseRequest,
   ReleaseRequest,
-} from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
-import type { AppleContext } from './_context.js';
+} from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
+import type { AppleContext } from "./_context.js";
 
 // Apple's 7-day phased release schedule: day → approx cumulative %
 const APPLE_PHASED_DAY_PERCENT: Record<number, number> = {
-  0: 0, 1: 1, 2: 2, 3: 5, 4: 10, 5: 20, 6: 50, 7: 100,
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 5,
+  4: 10,
+  5: 20,
+  6: 50,
+  7: 100,
 };
 
 function mapApplePhasedReleaseState(appleState: string): PhasedReleaseState {
   switch (appleState) {
-    case 'INACTIVE': return 'inactive';
-    case 'ACTIVE': return 'active';
-    case 'PAUSED': return 'paused';
-    case 'COMPLETE': return 'complete';
-    default: return 'inactive';
+    case "INACTIVE":
+      return "inactive";
+    case "ACTIVE":
+      return "active";
+    case "PAUSED":
+      return "paused";
+    case "COMPLETE":
+      return "complete";
+    default:
+      return "inactive";
   }
 }
 
 function mapPhasedReleaseStateToApple(state: PhasedReleaseState): string {
   switch (state) {
-    case 'inactive': return 'INACTIVE';
-    case 'active': return 'ACTIVE';
-    case 'paused': return 'PAUSED';
-    case 'complete': return 'COMPLETE';
+    case "inactive":
+      return "INACTIVE";
+    case "active":
+      return "ACTIVE";
+    case "paused":
+      return "PAUSED";
+    case "complete":
+      return "COMPLETE";
   }
 }
 
-function mapApplePhasedRelease(versionId: string, raw: any): PhasedRelease {
-  const attrs = raw?.attributes ?? {};
-  const state = mapApplePhasedReleaseState(attrs.phasedReleaseState ?? 'INACTIVE');
+function mapApplePhasedRelease(
+  versionId: string,
+  raw: Record<string, any>,
+): PhasedRelease {
+  const attrs = (raw?.attributes ?? {}) as Record<string, any>;
+  const state = mapApplePhasedReleaseState(
+    attrs.phasedReleaseState ?? "INACTIVE",
+  );
   const currentDay = attrs.currentDayNumber as number | undefined;
 
   return {
-    id: raw?.id ?? '',
-    versionId: versionId || raw?.id || '',
+    id: raw?.id ?? "",
+    versionId: versionId || raw?.id || "",
     state,
     currentDayNumber: currentDay ?? undefined,
     startDate: attrs.startDate ? new Date(attrs.startDate) : undefined,
     totalPauseDuration: attrs.totalPauseDuration ?? undefined,
-    rolloutPercentage: currentDay != null
-      ? (APPLE_PHASED_DAY_PERCENT[currentDay] ?? 0)
-      : (state === 'complete' ? 100 : 0),
+    rolloutPercentage:
+      currentDay != null
+        ? (APPLE_PHASED_DAY_PERCENT[currentDay] ?? 0)
+        : state === "complete"
+          ? 100
+          : 0,
   };
 }
 
@@ -56,7 +80,11 @@ export function createApplePhasedReleases(
   ctx: AppleContext,
 ): Pick<
   AppStoreCapability,
-  'createPhasedRelease' | 'getPhasedRelease' | 'updatePhasedRelease' | 'deletePhasedRelease' | 'createReleaseRequest'
+  | "createPhasedRelease"
+  | "getPhasedRelease"
+  | "updatePhasedRelease"
+  | "deletePhasedRelease"
+  | "createReleaseRequest"
 > {
   return {
     async createPhasedRelease(
@@ -64,22 +92,26 @@ export function createApplePhasedReleases(
       _appId: string,
       request: CreatePhasedReleaseRequest,
     ): Promise<PhasedRelease> {
-      const data = await ctx.appleRequest(tokens, '/appStoreVersionPhasedReleases', {
-        method: 'POST',
-        body: JSON.stringify({
-          data: {
-            type: 'appStoreVersionPhasedReleases',
-            attributes: {
-              phasedReleaseState: 'INACTIVE',
-            },
-            relationships: {
-              appStoreVersion: {
-                data: { type: 'appStoreVersions', id: request.versionId },
+      const data = await ctx.appleRequest(
+        tokens,
+        "/appStoreVersionPhasedReleases",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            data: {
+              type: "appStoreVersionPhasedReleases",
+              attributes: {
+                phasedReleaseState: "INACTIVE",
+              },
+              relationships: {
+                appStoreVersion: {
+                  data: { type: "appStoreVersions", id: request.versionId },
+                },
               },
             },
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       return mapApplePhasedRelease(request.versionId, data.data);
     },
@@ -95,16 +127,22 @@ export function createApplePhasedReleases(
       );
 
       const phasedRelease = (data.included ?? []).find(
-        (r: any) => r.type === 'appStoreVersionPhasedReleases',
+        (r: Record<string, unknown>) =>
+          r.type === "appStoreVersionPhasedReleases",
       );
 
       if (!phasedRelease) {
-        throw new CapabilityError('apple', `No phased release found for version ${versionId}`, false);
+        throw new CapabilityError(
+          "apple",
+          `No phased release found for version ${versionId}`,
+          false,
+        );
       }
 
       return mapApplePhasedRelease(versionId, phasedRelease);
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async updatePhasedRelease(
       tokens: TokenSet,
       _appId: string,
@@ -113,8 +151,8 @@ export function createApplePhasedReleases(
     ): Promise<PhasedRelease> {
       if (!update.state) {
         throw new CapabilityError(
-          'apple',
-          'Must specify a state (active, paused, or complete) to update an Apple phased release.',
+          "apple",
+          "Must specify a state (active, paused, or complete) to update an Apple phased release.",
           false,
         );
       }
@@ -125,10 +163,10 @@ export function createApplePhasedReleases(
         tokens,
         `/appStoreVersionPhasedReleases/${phasedReleaseId}`,
         {
-          method: 'PATCH',
+          method: "PATCH",
           body: JSON.stringify({
             data: {
-              type: 'appStoreVersionPhasedReleases',
+              type: "appStoreVersionPhasedReleases",
               id: phasedReleaseId,
               attributes: { phasedReleaseState: appleState },
             },
@@ -136,7 +174,7 @@ export function createApplePhasedReleases(
         },
       );
 
-      return mapApplePhasedRelease('', data.data);
+      return mapApplePhasedRelease("", data.data);
     },
 
     async deletePhasedRelease(
@@ -144,9 +182,13 @@ export function createApplePhasedReleases(
       _appId: string,
       phasedReleaseId: string,
     ): Promise<void> {
-      await ctx.appleRequest(tokens, `/appStoreVersionPhasedReleases/${phasedReleaseId}`, {
-        method: 'DELETE',
-      });
+      await ctx.appleRequest(
+        tokens,
+        `/appStoreVersionPhasedReleases/${phasedReleaseId}`,
+        {
+          method: "DELETE",
+        },
+      );
     },
 
     async createReleaseRequest(
@@ -154,19 +196,23 @@ export function createApplePhasedReleases(
       _appId: string,
       versionId: string,
     ): Promise<ReleaseRequest> {
-      const data = await ctx.appleRequest(tokens, '/appStoreVersionReleaseRequests', {
-        method: 'POST',
-        body: JSON.stringify({
-          data: {
-            type: 'appStoreVersionReleaseRequests',
-            relationships: {
-              appStoreVersion: {
-                data: { type: 'appStoreVersions', id: versionId },
+      const data = await ctx.appleRequest(
+        tokens,
+        "/appStoreVersionReleaseRequests",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            data: {
+              type: "appStoreVersionReleaseRequests",
+              relationships: {
+                appStoreVersion: {
+                  data: { type: "appStoreVersions", id: versionId },
+                },
               },
             },
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       return {
         id: data.data?.id ?? versionId,

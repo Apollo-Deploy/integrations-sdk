@@ -1,39 +1,55 @@
-import type { AppStoreCapability } from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
-import { mapAppleReview } from '../mappers/models.js';
-import type { AppleContext } from './_context.js';
+import type { AppStoreCapability } from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
+import { mapAppleReview } from "../mappers/models.js";
+import type { AppleContext } from "./_context.js";
 
 export function createAppleReviews(
   ctx: AppleContext,
-): Pick<AppStoreCapability, 'listReviews' | 'getReview' | 'replyToReview' | 'deleteReviewReply' | 'getRatingSummary' | 'listRatings'> {
+): Pick<
+  AppStoreCapability,
+  | "listReviews"
+  | "getReview"
+  | "replyToReview"
+  | "deleteReviewReply"
+  | "getRatingSummary"
+  | "listRatings"
+> {
   const capability: ReturnType<typeof createAppleReviews> = {
     async listReviews(tokens, appId, opts) {
       const params = new URLSearchParams({ limit: String(opts?.limit ?? 20) });
-      if (opts?.cursor) params.set('cursor', opts.cursor);
+      if (opts?.cursor) params.set("cursor", opts.cursor);
 
-      if (opts?.sortBy === 'rating') {
-        params.set('sort', opts.sortOrder === 'asc' ? 'rating' : '-rating');
+      if (opts?.sortBy === "rating") {
+        params.set("sort", opts.sortOrder === "asc" ? "rating" : "-rating");
       } else {
-        params.set('sort', opts?.sortOrder === 'asc' ? 'createdDate' : '-createdDate');
+        params.set(
+          "sort",
+          opts?.sortOrder === "asc" ? "createdDate" : "-createdDate",
+        );
       }
 
-      params.set('include', 'response');
+      params.set("include", "response");
 
-      if (opts?.territory) params.set('filter[territory]', opts.territory);
-      if (opts?.appVersion) params.set('filter[version]', opts.appVersion);
+      if (opts?.territory) params.set("filter[territory]", opts.territory);
+      if (opts?.appVersion) params.set("filter[version]", opts.appVersion);
 
-      const data = await ctx.appleRequest(tokens, `/apps/${appId}/customerReviews?${params}`);
+      const data = await ctx.appleRequest(
+        tokens,
+        `/apps/${appId}/customerReviews?${params}`,
+      );
 
       const responseMap = new Map<string, any>();
       for (const inc of data.included ?? []) {
-        if (inc.type === 'customerReviewResponses') {
+        if (inc.type === "customerReviewResponses") {
           const reviewId = inc.relationships?.review?.data?.id;
           if (reviewId) responseMap.set(reviewId, inc);
         }
       }
 
       return {
-        items: data.data.map((r: any) => mapAppleReview(r, responseMap.get(r.id))),
+        items: data.data.map((r: Record<string, any>) =>
+          mapAppleReview(r as any, responseMap.get(r.id)),
+        ),
         hasMore: !!data.links?.next,
         cursor: ctx.extractCursor(data.links?.next),
       };
@@ -45,24 +61,29 @@ export function createAppleReviews(
         `/customerReviews/${reviewId}?include=response`,
       );
       const response = (data.included ?? []).find(
-        (r: any) => r.type === 'customerReviewResponses',
+        (r: Record<string, unknown>) => r.type === "customerReviewResponses",
       );
       return mapAppleReview(data.data, response);
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async replyToReview(tokens, _appId, reviewId, body) {
-      const result = await ctx.appleRequest(tokens, '/customerReviewResponses', {
-        method: 'POST',
-        body: JSON.stringify({
-          data: {
-            type: 'customerReviewResponses',
-            attributes: { responseBody: body },
-            relationships: {
-              review: { data: { type: 'customerReviews', id: reviewId } },
+      const result = await ctx.appleRequest(
+        tokens,
+        "/customerReviewResponses",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            data: {
+              type: "customerReviewResponses",
+              attributes: { responseBody: body },
+              relationships: {
+                review: { data: { type: "customerReviews", id: reviewId } },
+              },
             },
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       return {
         body: result?.data?.attributes?.responseBody ?? body,
@@ -76,13 +97,18 @@ export function createAppleReviews(
         `/customerReviews/${reviewId}?include=response`,
       );
       const responseId = (review.included ?? []).find(
-        (r: any) => r.type === 'customerReviewResponses',
+        (r: Record<string, unknown>) => r.type === "customerReviewResponses",
       )?.id as string | undefined;
 
-      if (!responseId) throw new CapabilityError('apple', 'No developer reply found for this review', false);
+      if (!responseId)
+        throw new CapabilityError(
+          "apple",
+          "No developer reply found for this review",
+          false,
+        );
 
       await ctx.appleRequest(tokens, `/customerReviewResponses/${responseId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
     },
 
@@ -92,7 +118,13 @@ export function createAppleReviews(
         `/apps/${appId}/customerReviews?limit=200&sort=-createdDate`,
       );
 
-      const histogram = { oneStar: 0, twoStar: 0, threeStar: 0, fourStar: 0, fiveStar: 0 };
+      const histogram = {
+        oneStar: 0,
+        twoStar: 0,
+        threeStar: 0,
+        fourStar: 0,
+        fiveStar: 0,
+      };
       let total = 0;
       let sum = 0;
 

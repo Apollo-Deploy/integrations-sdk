@@ -1,20 +1,20 @@
-import { defineAdapter } from '@apollo-deploy/integrations';
-import { createSlackOAuth } from './oauth.js';
-import { createSlackWebhook } from './webhook.js';
-import { createSlackMessaging } from './capabilities/messaging.js';
-import type { SlackAdapterConfig } from './types.js';
+import { defineAdapter } from "@apollo-deploy/integrations";
+import { createSlackOAuth } from "./oauth.js";
+import { createSlackWebhook } from "./webhook.js";
+import { createSlackMessaging } from "./capabilities/messaging.js";
+import type { SlackAdapterConfig } from "./types.js";
 
 export const createSlackAdapter = defineAdapter<SlackAdapterConfig>({
-  id: 'slack',
-  name: 'Slack',
+  id: "slack",
+  name: "Slack",
   metadata: {
-    description: 'Send deployment notifications and alerts to Slack channels.',
-    category: 'Messaging',
-    dateAdded: '2024-01-15',
-    websiteUrl: 'https://slack.com',
-    docsUrl: 'https://api.slack.com',
+    description: "Send deployment notifications and alerts to Slack channels.",
+    category: "Messaging",
+    dateAdded: "2024-01-15",
+    websiteUrl: "https://slack.com",
+    docsUrl: "https://api.slack.com",
   },
-  capabilities: ['messaging'] as const,
+  capabilities: ["messaging"] as const,
 
   tokenMetadata: {
     // Slack tokens don't expire unless token rotation is enabled;

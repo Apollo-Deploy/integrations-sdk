@@ -83,13 +83,14 @@ export function encryptGCM(
  * Throws DecryptError on auth/tag mismatch.
  * All sensitive buffer arguments are zeroized after use.
  */
+// eslint-disable-next-line max-params -- required parameters for this utility function
 export function decryptGCM(
   cipherWithTag: Buffer,
   nonce: Buffer,
   key: Buffer,
   aad?: Buffer,
 ): Buffer {
-  if (!nonce || nonce.length < 12) {
+  if (nonce.length < 12) {
     throw new DecryptError("Invalid nonce length");
   }
   const ciphertext = cipherWithTag.subarray(0, cipherWithTag.length - 16);
@@ -99,7 +100,9 @@ export function decryptGCM(
   if (aad) {
     try {
       d.setAAD(aad);
-    } catch {}
+    } catch {
+      /* intentional: setAAD failure is non-critical */
+    }
   }
   try {
     const plain = Buffer.concat([d.update(ciphertext), d.final()]);
@@ -107,7 +110,9 @@ export function decryptGCM(
     return plain;
   } catch {
     zeroize(key);
-    throw new DecryptError("GCM authentication tag mismatch — data may be tampered");
+    throw new DecryptError(
+      "GCM authentication tag mismatch — data may be tampered",
+    );
   }
 }
 
@@ -177,9 +182,10 @@ export function createCryptoProvider(rootKey: Buffer): CryptoProvider {
 
     decrypt(envelope, ctx) {
       const info = `apollo:oauth:${ctx.purpose}:${ctx.orgId}:${ctx.entityId}`;
-      const salt = envelope.salt
-        ? Buffer.from(envelope.salt, "base64")
-        : undefined;
+      const salt =
+        envelope.salt != null
+          ? Buffer.from(envelope.salt, "base64")
+          : undefined;
       const { key } = deriveDataKey(rootKey, info, salt);
       const plain = decryptGCM(
         Buffer.from(envelope.ciphertext, "base64"),
@@ -212,8 +218,8 @@ export function createCryptoProvider(rootKey: Buffer): CryptoProvider {
 export function getRootKeyFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): Buffer {
-  const b64 = env["KMS_ROOT_KEY_B64"] ?? env["KMS_KEY_V1"];
-  if (!b64) {
+  const b64 = env.KMS_ROOT_KEY_B64 ?? env.KMS_KEY_V1;
+  if (b64 == null) {
     throw new CryptoConfigError(
       "Root key not configured. Set KMS_ROOT_KEY_B64 environment variable.",
     );
@@ -221,7 +227,7 @@ export function getRootKeyFromEnv(
   const key = Buffer.from(b64, "base64");
   if (key.length !== 32) {
     throw new CryptoConfigError(
-      `Invalid root key length: expected 32 bytes, got ${key.length}`,
+      `Invalid root key length: expected 32 bytes, got ${String(key.length)}`,
     );
   }
   return key;

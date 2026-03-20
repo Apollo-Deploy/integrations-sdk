@@ -2,7 +2,6 @@ import type {
   AppStoreCapability,
   TokenSet,
   Paginated,
-  PaginationOpts,
   StoreReview,
   StoreReviewReply,
   StoreRating,
@@ -10,23 +9,33 @@ import type {
   ReviewListOpts,
   RatingListOpts,
   RatingSummaryOpts,
-} from '@apollo-deploy/integrations';
-import { CapabilityError } from '@apollo-deploy/integrations';
-import { mapGoogleReview, mapGoogleRatingSummary } from '../mappers/models.js';
-import type { GooglePlayContext } from './_context.js';
-import { BASE_URL } from './_context.js';
+} from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
+import { mapGoogleReview, mapGoogleRatingSummary } from "../mappers/models.js";
+import type { GooglePlayContext } from "./_context.js";
+import { BASE_URL } from "./_context.js";
 
 export function createGooglePlayReviews(
   ctx: GooglePlayContext,
-): Pick<AppStoreCapability, 'listReviews' | 'getReview' | 'replyToReview' | 'deleteReviewReply' | 'getRatingSummary' | 'listRatings'> {
+): Pick<
+  AppStoreCapability,
+  | "listReviews"
+  | "getReview"
+  | "replyToReview"
+  | "deleteReviewReply"
+  | "getRatingSummary"
+  | "listRatings"
+> {
   const capability: ReturnType<typeof createGooglePlayReviews> = {
     async listReviews(
       tokens: TokenSet,
       packageName: string,
       opts?: ReviewListOpts,
     ): Promise<Paginated<StoreReview>> {
-      const params = new URLSearchParams({ maxResults: String(opts?.limit ?? 20) });
-      if (opts?.cursor) params.set('token', opts.cursor);
+      const params = new URLSearchParams({
+        maxResults: String(opts?.limit ?? 20),
+      });
+      if (opts?.cursor) params.set("token", opts.cursor);
 
       const data = await ctx.gpRequest(
         tokens,
@@ -52,16 +61,19 @@ export function createGooglePlayReviews(
       return { ...mapGoogleReview(data), appId: packageName };
     },
 
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async replyToReview(
       tokens: TokenSet,
       packageName: string,
       reviewId: string,
       body: string,
     ): Promise<StoreReviewReply> {
-      const data = await ctx.gpRequest<{ result: { replyText: string; lastEdited: { seconds: string } } }>(
+      const data = await ctx.gpRequest<{
+        result: { replyText: string; lastEdited: { seconds: string } };
+      }>(
         tokens,
         `${BASE_URL}/applications/${packageName}/reviews/${reviewId}:reply`,
-        { method: 'POST', body: JSON.stringify({ replyText: body }) },
+        { method: "POST", body: JSON.stringify({ replyText: body }) },
       );
       return {
         body: data.result?.replyText ?? body,
@@ -76,7 +88,11 @@ export function createGooglePlayReviews(
       _packageName: string,
       _reviewId: string,
     ): Promise<void> {
-      throw new CapabilityError('google-play', 'Google Play API does not support deleting review replies.', false);
+      throw new CapabilityError(
+        "google-play",
+        "Google Play API does not support deleting review replies.",
+        false,
+      );
     },
 
     async getRatingSummary(
@@ -88,7 +104,10 @@ export function createGooglePlayReviews(
         tokens,
         `${BASE_URL}/applications/${packageName}/reviews?maxResults=1`,
       );
-      return mapGoogleRatingSummary(packageName, data?.averageRating ? data : {});
+      return mapGoogleRatingSummary(
+        packageName,
+        data?.averageRating ? data : {},
+      );
     },
 
     async listRatings(
@@ -101,16 +120,22 @@ export function createGooglePlayReviews(
         cursor: opts?.cursor,
       });
 
-      const ratings = reviewPage.items.map((r): StoreRating => ({
-        id: r.id,
-        appId: packageName,
-        rating: r.rating,
-        territory: r.territory,
-        appVersion: r.appVersion,
-        createdAt: r.createdAt,
-      }));
+      const ratings = reviewPage.items.map(
+        (r): StoreRating => ({
+          id: r.id,
+          appId: packageName,
+          rating: r.rating,
+          territory: r.territory,
+          appVersion: r.appVersion,
+          createdAt: r.createdAt,
+        }),
+      );
 
-      return { items: ratings, hasMore: reviewPage.hasMore, cursor: reviewPage.cursor };
+      return {
+        items: ratings,
+        hasMore: reviewPage.hasMore,
+        cursor: reviewPage.cursor,
+      };
     },
   };
 

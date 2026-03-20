@@ -8,23 +8,24 @@
  * - installationId stored in providerData (not a standard refresh token).
  */
 
-import { defineAdapter } from '@apollo-deploy/integrations';
-import { createGithubOAuth } from './oauth.js';
-import { createGithubWebhook } from './webhook.js';
-import { createGithubSourceControl } from './capabilities/source-control.js';
-import type { GithubAdapterConfig } from './types.js';
+import { defineAdapter } from "@apollo-deploy/integrations";
+import { createGithubOAuth } from "./oauth.js";
+import { createGithubWebhook } from "./webhook.js";
+import { createGithubSourceControl } from "./capabilities/source-control.js";
+import type { GithubAdapterConfig } from "./types.js";
 
 export const createGithubAdapter = defineAdapter<GithubAdapterConfig>({
-  id: 'github',
-  name: 'GitHub',
+  id: "github",
+  name: "GitHub",
   metadata: {
-    description: 'Connect GitHub repositories to track pull requests, commits, and code deployments.',
-    category: 'Source Control',
-    dateAdded: '2024-01-15',
-    websiteUrl: 'https://github.com',
-    docsUrl: 'https://docs.github.com/en/apps',
+    description:
+      "Connect GitHub repositories to track pull requests, commits, and code deployments.",
+    category: "Source Control",
+    dateAdded: "2024-01-15",
+    websiteUrl: "https://github.com",
+    docsUrl: "https://docs.github.com/en/apps",
   },
-  capabilities: ['source-control'] as const,
+  capabilities: ["source-control"] as const,
 
   tokenMetadata: {
     // Installation tokens expire after 1 hour

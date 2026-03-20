@@ -1,4 +1,4 @@
-import type { PaginationOpts } from './shared.js';
+import type { PaginationOpts } from "./shared.js";
 
 // ─── App Store ──────────────────────────────────────────────────────────────────────────────
 
@@ -6,7 +6,7 @@ export interface StoreApp {
   id: string;
   name: string;
   bundleId: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   status: string;
   storeUrl?: string;
   iconUrl?: string;
@@ -19,21 +19,17 @@ export interface StoreBuild {
   appId: string;
   version: string;
   buildNumber: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   status: StoreBuildStatus;
   uploadedAt: Date;
   expiresAt?: Date;
   size?: number;
   minOsVersion?: string;
-  buildType?: 'ipa' | 'aab' | 'apk' | 'xcarchive';
+  buildType?: "ipa" | "aab" | "apk" | "xcarchive";
   hasArtifacts: boolean;
 }
 
-export type StoreBuildStatus =
-  | 'processing'
-  | 'valid'
-  | 'invalid'
-  | 'expired';
+export type StoreBuildStatus = "processing" | "valid" | "invalid" | "expired";
 
 // ── Build Artifacts ──────────────────────────────────────────────────────────
 
@@ -50,21 +46,21 @@ export interface StoreArtifact {
 }
 
 export type StoreArtifactType =
-  | 'ipa'
-  | 'dsym'
-  | 'bitcode_compilation_log'
-  | 'app_clip'
-  | 'apk'
-  | 'aab'
-  | 'universal_apk'
-  | 'split_apk'
-  | 'standalone_apk'
-  | 'asset_pack_slice'
-  | 'recovery_apk'
-  | 'proguard_mapping'
-  | 'native_debug_symbols'
-  | 'app_thinning_variant'
-  | 'other';
+  | "ipa"
+  | "dsym"
+  | "bitcode_compilation_log"
+  | "app_clip"
+  | "apk"
+  | "aab"
+  | "universal_apk"
+  | "split_apk"
+  | "standalone_apk"
+  | "asset_pack_slice"
+  | "recovery_apk"
+  | "proguard_mapping"
+  | "native_debug_symbols"
+  | "app_thinning_variant"
+  | "other";
 
 // ── Releases ────────────────────────────────────────────────────────────────
 
@@ -86,14 +82,14 @@ export interface StoreRelease {
 }
 
 export type StoreReleaseStatus =
-  | 'draft'
-  | 'in_review'
-  | 'pending_release'
-  | 'rolling_out'
-  | 'completed'
-  | 'halted'
-  | 'rejected'
-  | 'superseded';
+  | "draft"
+  | "in_review"
+  | "pending_release"
+  | "rolling_out"
+  | "completed"
+  | "halted"
+  | "rejected"
+  | "superseded";
 
 export interface LocalizedText {
   language: string;
@@ -107,7 +103,7 @@ export interface StoreVersion {
   appId: string;
   versionString: string;
   state: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   createdAt: Date;
 }
 
@@ -121,12 +117,7 @@ export interface StoreTrack {
   releases: TrackRelease[];
 }
 
-export type TrackType =
-  | 'production'
-  | 'beta'
-  | 'alpha'
-  | 'internal'
-  | 'custom';
+export type TrackType = "production" | "beta" | "alpha" | "internal" | "custom";
 
 export interface TrackRelease {
   version: string;
@@ -148,7 +139,7 @@ export interface TrackReleaseInput {
   versionCodes: string[];
   rolloutPercentage?: number;
   releaseNotes?: LocalizedText[];
-  status?: 'draft' | 'completed' | 'halted';
+  status?: "draft" | "completed" | "halted";
 }
 
 // ── Reviews & Ratings ────────────────────────────────────────────────────────
@@ -220,7 +211,7 @@ export interface BetaTester {
   email: string;
   firstName?: string;
   lastName?: string;
-  status: 'accepted' | 'pending' | 'expired' | 'not_invited';
+  status: "accepted" | "pending" | "expired" | "not_invited";
   sessionCount?: number;
   crashCount?: number;
   installedVersion?: string;
@@ -245,7 +236,7 @@ export interface CreateBetaGroupInput {
 
 export interface VitalsSummary {
   appId: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   period: { start: Date; end: Date };
   metrics: {
     crashRate: VitalIndicator;
@@ -262,30 +253,30 @@ export interface VitalIndicator {
   value: number;
   unit: string;
   threshold?: number;
-  status: 'good' | 'needs_attention' | 'critical';
-  trend: 'improving' | 'stable' | 'degrading';
+  status: "good" | "needs_attention" | "critical";
+  trend: "improving" | "stable" | "degrading";
   percentile?: number;
 }
 
 export type VitalMetricType =
-  | 'crash_rate'
-  | 'anr_rate'
-  | 'excessive_wakeups'
-  | 'stuck_background_worker'
-  | 'launch_time'
-  | 'render_time'
-  | 'permission_denial_rate'
-  | 'battery_drain'
-  | 'memory_usage'
-  | 'disk_usage'
-  | 'hang_rate'
-  | 'scroll_hitch_rate'
-  | 'disk_writes';
+  | "crash_rate"
+  | "anr_rate"
+  | "excessive_wakeups"
+  | "stuck_background_worker"
+  | "launch_time"
+  | "render_time"
+  | "permission_denial_rate"
+  | "battery_drain"
+  | "memory_usage"
+  | "disk_usage"
+  | "hang_rate"
+  | "scroll_hitch_rate"
+  | "disk_writes";
 
 export interface VitalMetric {
   metric: VitalMetricType;
   appId: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   dataPoints: VitalDataPoint[];
   peerComparison?: {
     percentile: number;
@@ -302,7 +293,7 @@ export interface VitalDataPoint {
 export interface CrashCluster {
   id: string;
   appId: string;
-  platform: 'ios' | 'android';
+  platform: "ios" | "android";
   title: string;
   exceptionType: string;
   affectedUsers: number;
@@ -344,8 +335,8 @@ export interface ReviewListOpts extends PaginationOpts {
   maxRating?: number;
   territory?: string;
   appVersion?: string;
-  sortBy?: 'date' | 'rating' | 'helpfulness';
-  sortOrder?: 'asc' | 'desc';
+  sortBy?: "date" | "rating" | "helpfulness";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface RatingSummaryOpts {
@@ -365,7 +356,7 @@ export interface VitalsQueryOpts {
   startDate?: Date;
   endDate?: Date;
   version?: string;
-  granularity?: 'daily' | 'hourly';
+  granularity?: "daily" | "hourly";
   deviceType?: string;
   osVersion?: string;
 }
@@ -375,7 +366,7 @@ export interface CrashQueryOpts extends PaginationOpts {
   startDate?: Date;
   endDate?: Date;
   includeResolved?: boolean;
-  sortBy?: 'event_count' | 'affected_users' | 'last_occurrence';
+  sortBy?: "event_count" | "affected_users" | "last_occurrence";
 }
 
 // ── Publishing ────────────────────────────────────────────────────────────────
@@ -412,7 +403,7 @@ export interface PublishResult {
 
 // ── Binary Uploads ────────────────────────────────────────────────────────────
 
-export type BinaryFileType = 'aab' | 'apk' | 'ipa';
+export type BinaryFileType = "aab" | "apk" | "ipa";
 
 export interface UploadBinaryOpts {
   /**
@@ -428,7 +419,7 @@ export interface UploadBinaryOpts {
    * - `'internal-sharing'`: Google Play Internal App Sharing — returns an instant
    *   download URL. Apple throws `CapabilityError` for this channel.
    */
-  channel?: 'store' | 'internal-sharing';
+  channel?: "store" | "internal-sharing";
   /**
    * Device Tier Config ID for generating APK deliverables from an uploaded AAB.
    * Pass `"LATEST"` to use the most recently uploaded DTC.
@@ -458,7 +449,7 @@ export interface UploadBinaryOpts {
    * Apple platform target. Defaults to `'IOS'`.
    * Only used by the Apple adapter.
    */
-  applePlatform?: 'IOS' | 'MAC_OS' | 'TV_OS' | 'VISION_OS';
+  applePlatform?: "IOS" | "MAC_OS" | "TV_OS" | "VISION_OS";
 }
 
 /**
@@ -469,22 +460,26 @@ export interface InternalSharingArtifact {
   downloadUrl: string;
   /** SHA-256 certificate fingerprint of the signing certificate. */
   certificateFingerprint?: string;
-  type: 'apk' | 'aab';
+  type: "apk" | "aab";
 }
 
 export type UploadBinaryResult =
-  | { channel: 'store'; fileType: BinaryFileType; build: StoreBuild }
-  | { channel: 'internal-sharing'; fileType: 'apk' | 'aab'; artifact: InternalSharingArtifact };
+  | { channel: "store"; fileType: BinaryFileType; build: StoreBuild }
+  | {
+      channel: "internal-sharing";
+      fileType: "apk" | "aab";
+      artifact: InternalSharingArtifact;
+    };
 
 // ── App Recovery (Google Play) ────────────────────────────────────────────────
 
 export type AppRecoveryStatus =
-  | 'DRAFT'
-  | 'ACTIVE_RECOVERING'
-  | 'ACTIVE_WAITING'
-  | 'COMPLETE'
-  | 'CANCELLED'
-  | 'RECOVERY_STATUS_UNSPECIFIED';
+  | "DRAFT"
+  | "ACTIVE_RECOVERING"
+  | "ACTIVE_WAITING"
+  | "COMPLETE"
+  | "CANCELLED"
+  | "RECOVERY_STATUS_UNSPECIFIED";
 
 export interface AppRecoveryAction {
   /** Unique recovery action ID. */
@@ -493,10 +488,10 @@ export interface AppRecoveryAction {
   status: AppRecoveryStatus;
   targeting?: AppRecoveryTargeting;
   /** Remediation measures applied to affected users. */
-  remediationMeasures?: Array<{
+  remediationMeasures?: {
     type: string;
     payload?: Record<string, unknown>;
-  }>;
+  }[];
   createTime?: Date;
   deployTime?: Date;
   cancelTime?: Date;
@@ -507,7 +502,10 @@ export interface AppRecoveryTargeting {
   /** Explicit list of version codes targeted by this recovery. */
   versionList?: { versionCodes: string[] };
   /** Inclusive range of version codes targeted by this recovery. */
-  versionRange?: { versionCodeLowerBound: string; versionCodeUpperBound?: string };
+  versionRange?: {
+    versionCodeLowerBound: string;
+    versionCodeUpperBound?: string;
+  };
   /** Whether this recovery targets all users regardless of version. */
   allUsers?: boolean;
   /** Android SDK versions (API levels) that are targeted. */
@@ -527,7 +525,7 @@ export interface CreateAppRecoveryRequest {
   /** Target all installed versions. */
   allUsers?: boolean;
   /** Type of remediation applied when the recovery triggers. */
-  remediationType: 'REMOTE_IN_APP_UPDATE' | 'FORCE_CRASH';
+  remediationType: "REMOTE_IN_APP_UPDATE" | "FORCE_CRASH";
 }
 
 export interface AppRecoveryTargetingRequest {
@@ -554,7 +552,7 @@ export interface AppRecoveryListOpts extends PaginationOpts {
  * Apple: Maps directly to PhasedReleaseState enum.
  * Google: Maps from staged rollout status (inProgress → active, halted → paused, etc.).
  */
-export type PhasedReleaseState = 'inactive' | 'active' | 'paused' | 'complete';
+export type PhasedReleaseState = "inactive" | "active" | "paused" | "complete";
 
 /**
  * A phased (staged) release of an app version.
@@ -637,11 +635,11 @@ export interface ReleaseRequest {
  */
 
 export type GeneratedArtifactType =
-  | 'split'
-  | 'standalone'
-  | 'universal'
-  | 'asset_pack_slice'
-  | 'recovery';
+  | "split"
+  | "standalone"
+  | "universal"
+  | "asset_pack_slice"
+  | "recovery";
 
 export interface GeneratedArtifact {
   /** Download ID used to retrieve the binary (Google: generatedapks.download, Apple: deliverable URL). */
@@ -692,8 +690,12 @@ export interface GeneratedArtifactVariant {
 
 export interface GeneratedArtifactModule {
   name: string;
-  moduleType?: 'UNKNOWN_MODULE_TYPE' | 'FEATURE_MODULE';
-  deliveryType?: 'UNKNOWN_DELIVERY_TYPE' | 'INSTALL_TIME' | 'ON_DEMAND' | 'FAST_FOLLOW';
+  moduleType?: "UNKNOWN_MODULE_TYPE" | "FEATURE_MODULE";
+  deliveryType?:
+    | "UNKNOWN_DELIVERY_TYPE"
+    | "INSTALL_TIME"
+    | "ON_DEMAND"
+    | "FAST_FOLLOW";
   artifacts: GeneratedArtifactDescription[];
 }
 
@@ -707,7 +709,11 @@ export interface GeneratedArtifactDescription {
 
 export interface GeneratedArtifactAssetSliceSet {
   moduleName: string;
-  deliveryType?: 'UNKNOWN_DELIVERY_TYPE' | 'INSTALL_TIME' | 'ON_DEMAND' | 'FAST_FOLLOW';
+  deliveryType?:
+    | "UNKNOWN_DELIVERY_TYPE"
+    | "INSTALL_TIME"
+    | "ON_DEMAND"
+    | "FAST_FOLLOW";
   slices: GeneratedArtifactDescription[];
 }
 
@@ -732,7 +738,11 @@ export interface BuildDeliverable {
   id: string;
   buildId: string;
   /** Deliverable type. */
-  type: 'app_thinning_variant' | 'dsym' | 'bitcode_compilation_log' | 'app_clip';
+  type:
+    | "app_thinning_variant"
+    | "dsym"
+    | "bitcode_compilation_log"
+    | "app_clip";
   /** Variant name / device model for app thinning. */
   variant?: string;
   /** Compressed file size in bytes. */

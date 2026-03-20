@@ -8,7 +8,7 @@
  */
 
 // ── Hub ───────────────────────────────────────────────────────────────────────
-export { IntegrationHub } from './hub.js';
+export { IntegrationHub } from "./hub.js";
 export type {
   HubConfig,
   AdapterInfo,
@@ -18,11 +18,15 @@ export type {
   WebhookRouter,
   EventHandler,
   EventContext,
-} from './hub.js';
+} from "./hub.js";
 
 // ── Factory Helper ────────────────────────────────────────────────────────────
-export { defineAdapter } from './define-adapter.js';
-export type { AdapterDefinition, AdapterFactory, AdapterDefinitionInfo } from './define-adapter.js';
+export { defineAdapter } from "./define-adapter.js";
+export type {
+  AdapterDefinition,
+  AdapterFactory,
+  AdapterDefinitionInfo,
+} from "./define-adapter.js";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 export {
@@ -32,7 +36,7 @@ export {
   CapabilityError,
   TokenRefreshError,
   UnknownAdapterError,
-} from './errors.js';
+} from "./errors.js";
 
 // ── Adapter Interface & Types ─────────────────────────────────────────────────
 export type {
@@ -47,7 +51,7 @@ export type {
   CredentialInputField,
   TokenMetadata,
   Logger,
-} from './types/adapter.js';
+} from "./types/adapter.js";
 
 // ── OAuth Types ───────────────────────────────────────────────────────────────
 export type {
@@ -57,7 +61,7 @@ export type {
   TokenSet,
   ProviderIdentity,
   PostAuthResult,
-} from './types/oauth.js';
+} from "./types/oauth.js";
 
 // ── Webhook Types ─────────────────────────────────────────────────────────────
 export type {
@@ -65,7 +69,7 @@ export type {
   VerifyParams,
   ParseParams,
   SynchronousResponse,
-} from './types/webhook.js';
+} from "./types/webhook.js";
 
 // ── Domain Models ─────────────────────────────────────────────────────────────
 export type {
@@ -164,13 +168,71 @@ export type {
   BuildDeliverable,
   BuildDeliverablesResult,
   GeneratedArtifactsListOpts,
-} from './types/models/index.js';
+  // Monitoring models
+  MonitoringOrganization,
+  MonitoringProject,
+  MonitoringIssue,
+  MonitoringIssueListOpts,
+  MonitoringUpdateIssueInput,
+  BulkUpdateIssuesInput,
+  MonitoringEvent,
+  MonitoringEventListOpts,
+  MonitoringEventEntry,
+  MonitoringEventError,
+  MonitoringHttpRequest,
+  StackFrame,
+  ExceptionValue,
+  MonitoringRelease,
+  MonitoringCreateReleaseInput,
+  MonitoringReleaseListOpts,
+  MonitoringDeploy,
+  CreateDeployInput,
+  MonitoringCommitRef,
+  WebVitalsData,
+  WebVitalMetric,
+  MonitoringVitalsQueryOpts,
+  MetricSeries,
+  MetricQueryOpts,
+  MetricAggregate,
+  MonitoringLogEntry,
+  LogLevel,
+  LogQueryOpts,
+  MonitoringReplay,
+  ReplayListOpts,
+  MonitoringAlertRule,
+  MonitoringAlertIncident,
+  AlertRuleListOpts,
+  AlertTrigger,
+  AlertAction,
+  AlertStatus,
+  AlertRuleType,
+  AlertThresholdType,
+  MonitoringCron,
+  CronStatus,
+  MonitoringTeam,
+  MonitoringMember,
+  MonitoringTagKey,
+  MonitoringTagValue,
+  MonitoringTag,
+  MonitoringUser,
+  MonitoringActor,
+  MonitoringUserFeedback,
+  CreateUserFeedbackInput,
+  PerformanceTransaction,
+  PerformanceSpan,
+  TransactionStatus,
+  IssuePriority,
+  IssueStatus,
+  MonitoringEnvironment,
+  MonitoringPlatform,
+} from "./types/models/index.js";
 
 // ── Capability Interfaces ────────────────────────────────────────────────────────
-export type { SourceControlCapability } from './types/capabilities/source-control.js';
-export type { MessagingCapability } from './types/capabilities/messaging.js';
-export type { IssueTrackingCapability } from './types/capabilities/issue-tracking.js';
-export type { AppStoreCapability } from './types/capabilities/app-store.js';
+export type { SourceControlCapability } from "./types/capabilities/source-control.js";
+export type { MessagingCapability } from "./types/capabilities/messaging.js";
+export type { IssueTrackingCapability } from "./types/capabilities/issue-tracking.js";
+export type { AppStoreCapability } from "./types/capabilities/app-store.js";
+export type { MonitoringCapability } from "./types/capabilities/monitoring.js";
 
 // ── Crypto ────────────────────────────────────────────────────────────────────
 export {
@@ -183,9 +245,9 @@ export {
   createCryptoProvider,
   getRootKeyFromEnv,
   createCryptoProviderFromEnv,
-} from './crypto.js';
+} from "./crypto.js";
 export type {
   EncryptedEnvelope,
   CryptoProvider,
   EncryptionContext,
-} from './crypto.js';
+} from "./crypto.js";
