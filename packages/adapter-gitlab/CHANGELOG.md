@@ -1,5 +1,14 @@
 # @apollo-deploy/adapter-gitlab
 
+## 1.3.1
+
+### Patch Changes
+
+- 7ec2981: Merge pull request #5 from Apollo-Deploy/changeset-release/main
+- f7e254c: fix: annotate reduce accumulators to resolve restrict-plus-operands
+- Updated dependencies [7ec2981]
+  - @apollo-deploy/integrations@1.4.1
+
 ## 1.3.0
 
 ### Minor Changes
