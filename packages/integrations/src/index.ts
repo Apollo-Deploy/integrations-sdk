@@ -49,6 +49,7 @@ export type {
   SetupFlow,
   SetupFlowStep,
   ClientAuthConfig,
+  ConfigField,
   CredentialInputField,
   TokenMetadata,
   Logger,

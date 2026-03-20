@@ -15,6 +15,7 @@ import type {
   AdapterContext,
   AdapterMetadata,
   ClientAuthConfig,
+  ConfigField,
   IntegrationAdapter,
   Logger,
   SetupFlow,
@@ -73,6 +74,11 @@ export interface AdapterInfo {
    * Contains `setupFlow` and optional `fields` — no scopes or internal details.
    */
   auth: ClientAuthConfig;
+  /**
+   * Runtime configuration schema for this integration.
+   * Present when the adapter declares `metadata.configSchema`.
+   */
+  configSchema?: ConfigField[];
 }
 
 export interface HubConfig<
@@ -174,6 +180,9 @@ export class IntegrationHub<
         capabilities: a.capabilities,
         metadata: a.metadata ?? {},
         auth: IntegrationHub._toClientAuth(rawAuth),
+        ...(a.metadata?.configSchema !== undefined && {
+          configSchema: a.metadata.configSchema,
+        }),
       };
     });
   }

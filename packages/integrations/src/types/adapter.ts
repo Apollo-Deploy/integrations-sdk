@@ -113,6 +113,29 @@ export interface CredentialInputField {
 }
 
 /**
+ * A single field in an integration's runtime configuration schema.
+ * Consumers use this to build a settings form for a connected integration.
+ */
+export interface ConfigField {
+  /** Stable key used when persisting the config value. */
+  key: string;
+  /** User-facing label shown above the input. */
+  label: string;
+  /** Optional longer description rendered as help text. */
+  description?: string;
+  /** UI control type. */
+  type: "text" | "select" | "boolean" | "number";
+  required: boolean;
+  /** Options for `type: 'select'`. */
+  options?: { value: string; label: string }[];
+  /**
+   * When `true`, options are fetched at runtime from the integration
+   * rather than being statically declared here.
+   */
+  dynamic?: boolean;
+}
+
+/**
  * Authentication configuration defined by an adapter.
  * The hub derives the client-safe `SetupFlow` from this at runtime.
  */
@@ -189,6 +212,13 @@ export interface AdapterMetadata {
    * since all current adapters implement the OAuth handler interface.
    */
   auth?: AdapterAuthConfig;
+
+  /**
+   * Schema for runtime configuration fields shown after the integration is connected.
+   * Use this to let users configure the integration's behaviour (e.g. default repo, channel).
+   * Omit when no post-connection configuration is needed.
+   */
+  configSchema?: ConfigField[];
 }
 
 /**
