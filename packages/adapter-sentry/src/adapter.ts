@@ -30,7 +30,6 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
     docsUrl: "https://docs.sentry.io/api/",
     auth: {
       method: "api_key" as const,
-      setupFlow: "credential_form" as const,
       credentialInputs: [
         {
           key: "authToken",

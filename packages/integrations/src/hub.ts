@@ -196,15 +196,14 @@ export class IntegrationHub<
    * Auto-derive `setupFlow` from `method` when the adapter doesn't specify one.
    */
   private static _deriveSetupFlow(raw: AdapterAuthConfig): SetupFlow {
+    const hasFields = (raw.credentialInputs?.length ?? 0) > 0;
     switch (raw.method) {
       case "oauth2":
-        return (raw.credentialInputs?.length ?? 0) > 0
-          ? "oauth_then_configure"
-          : "oauth_only";
+        return hasFields ? ["oauth_only", "credential_form"] : ["oauth_only"];
       case "none":
-        return "none";
+        return [];
       default:
-        return "credential_form";
+        return ["credential_form"];
     }
   }
 

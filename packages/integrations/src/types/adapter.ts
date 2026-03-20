@@ -59,18 +59,24 @@ export type AuthMethod =
   | "none";
 
 /**
- * How the client should present the connect/install flow.
+ * A single step in the connection setup flow presented to the user.
  *
  * - `oauth_only`           — Single "Authorize" button (no form).
- * - `credential_form`      — Render a form from `credentialInputs`.
- * - `oauth_then_configure`  — OAuth button → post-auth configuration step (repo/channel picker).
+ * - `credential_form`      — Render a form built from `credentialInputs`.
+ * - `oauth_then_configure` — OAuth button → post-auth configuration step.
  * - `none`                 — One-click install, no credentials needed.
  */
-export type SetupFlow =
+export type SetupFlowStep =
   | "oauth_only"
   | "credential_form"
   | "oauth_then_configure"
   | "none";
+
+/**
+ * Ordered list of setup steps the client UI must render to complete connection.
+ * An empty array means no setup is required.
+ */
+export type SetupFlow = SetupFlowStep[];
 
 /**
  * A single credential field the connect UI must render.

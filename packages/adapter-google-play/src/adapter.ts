@@ -7,7 +7,6 @@ import type { AdapterAuthConfig } from "@apollo-deploy/integrations";
 
 const auth: AdapterAuthConfig = {
   method: "api_key",
-  setupFlow: "credential_form",
   credentialInputs: [
     {
       key: "serviceAccountJson",
