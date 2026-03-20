@@ -12,6 +12,8 @@ import type {
   CodeScanAlertsOpts,
   CommitStatus,
   CommitStatusesOpts,
+  ReleaseWindowComparison,
+  CompareReleaseWindowsOpts,
 } from "@apollo-deploy/integrations";
 import type { GitlabAdapterConfig } from "../types.js";
 
@@ -428,6 +430,95 @@ export function createGitlabSourceControl(
         .filter((s) => opts?.context == null || s.context === opts.context);
 
       return { items, hasMore: false };
+    },
+
+    // ── Release Window Comparison ────────────────────────────────────────────
+
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
+    async compareReleaseWindows(
+      tokens: TokenSet,
+      repoId: string,
+      base: string,
+      head: string,
+      opts?: CompareReleaseWindowsOpts,
+    ): Promise<ReleaseWindowComparison> {
+      const encoded = encodeURIComponent(repoId);
+      const qs = `from=${encodeURIComponent(base)}&to=${encodeURIComponent(head)}&straight=false`;
+      const resp = await glFetch(
+        base,
+        tokens.accessToken,
+        `/projects/${encoded}/repository/compare?${qs}`,
+      );
+      const data = (await resp.json()) as Record<string, unknown>;
+
+      const rawCommits = (data.commits as Record<string, unknown>[] | undefined) ?? [];
+      const rawDiffs  = (data.diffs  as Record<string, unknown>[] | undefined) ?? [];
+
+      const commits: Commit[] = rawCommits.map((c): Commit => ({
+        sha: c.id as string,
+        message: c.message as string,
+        author: {
+          id: (c.author_email as string | undefined) ?? "",
+          name: (c.author_name as string | undefined) ?? "",
+        },
+        timestamp: new Date(c.authored_date as string),
+        url: (c.web_url as string | undefined) ?? "",
+      }));
+
+      const allFiles: ChangedFile[] = rawDiffs.map((d): ChangedFile => ({
+        filename:
+          (d.new_path as string | undefined) ??
+          (d.old_path as string | undefined) ??
+          "",
+        status:
+          d.new_file === true
+            ? "added"
+            : d.deleted_file === true
+              ? "deleted"
+              : d.renamed_file === true
+                ? "renamed"
+                : "modified",
+        additions: (d.added_lines as number | undefined) ?? 0,
+        deletions: (d.removed_lines as number | undefined) ?? 0,
+        changes:
+          ((d.added_lines as number | undefined) ?? 0) +
+          ((d.removed_lines as number | undefined) ?? 0),
+        patch: opts?.includeDiffs ? (d.diff as string | undefined) : undefined,
+        previousFilename:
+          d.renamed_file === true
+            ? (d.old_path as string | undefined)
+            : undefined,
+      }));
+
+      const changedFiles = opts?.path == null
+        ? allFiles
+        : allFiles.filter((f) => f.filename.startsWith(opts.path ?? ""));
+
+      // GitLab compare doesn't expose ahead_by/behind_by directly; derive from commit counts.
+      const aheadBy = commits.length;
+
+      const baseCommit = data.commit as Record<string, unknown> | undefined;
+
+      return {
+        base: { ref: base },
+        head: {
+          ref: head,
+          sha: baseCommit?.id as string | undefined,
+          timestamp:
+            baseCommit?.authored_date != null
+              ? new Date(baseCommit.authored_date as string)
+              : undefined,
+        },
+        status: aheadBy === 0 ? "identical" : "ahead",
+        aheadBy,
+        behindBy: 0,
+        commits,
+        changedFiles,
+        totalAdditions: changedFiles.reduce((n, f) => n + f.additions, 0),
+        totalDeletions: changedFiles.reduce((n, f) => n + f.deletions, 0),
+        mergedPullRequests: [],
+        url: undefined,
+      };
     },
   };
 }
