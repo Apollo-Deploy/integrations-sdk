@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.3.1
+
+### Patch Changes
+
+- f886161: Merge pull request #1 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [f886161]
+  - @apollo-deploy/integrations@1.3.1
+
 ## 1.3.0
 
 ### Minor Changes

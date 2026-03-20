@@ -1,5 +1,12 @@
 # @apollo-deploy/adapter-sentry
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [f886161]
+  - @apollo-deploy/integrations@1.3.1
+
 ## 1.0.1
 
 ### Patch Changes
