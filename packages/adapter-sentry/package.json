@@ -1,7 +1,7 @@
 {
   "name": "@apollo-deploy/adapter-sentry",
-  "version": "1.0.0",
-  "description": "Sentry adapter for Apollo Deploy integration hub \u2014 errors, vitals, logs, replays, and more",
+  "version": "1.0.1",
+  "description": "Sentry adapter for Apollo Deploy integration hub — errors, vitals, logs, replays, and more",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

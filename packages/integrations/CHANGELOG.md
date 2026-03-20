@@ -1,5 +1,11 @@
 # @apollo-deploy/integrations
 
+## 1.3.0
+
+### Minor Changes
+
+- d38aa7d: feat: expand adapters and stabilize build/lint
+
 ## 1.2.0
 
 ### Minor Changes
