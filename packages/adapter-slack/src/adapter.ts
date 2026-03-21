@@ -13,6 +13,7 @@ export const createSlackAdapter = defineAdapter<SlackAdapterConfig>({
     dateAdded: "2024-01-15",
     websiteUrl: "https://slack.com",
     docsUrl: "https://api.slack.com",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["messaging"] as const,
 

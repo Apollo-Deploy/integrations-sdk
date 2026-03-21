@@ -14,12 +14,13 @@ export const createDiscordAdapter = defineAdapter<DiscordAdapterConfig>({
     dateAdded: "2024-03-10",
     websiteUrl: "https://discord.com",
     docsUrl: "https://discord.com/developers/docs",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["messaging"] as const,
 
   tokenMetadata: {
-    expiresInSeconds: null, // bot tokens never expire
-    refreshable: false,
+    expiresInSeconds: 604_800, // 7 days — standard Discord OAuth2 user token lifetime
+    refreshable: true,
     rotatesRefreshToken: false,
     requiresRefreshLock: false,
   },

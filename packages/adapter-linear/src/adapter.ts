@@ -13,14 +13,16 @@ export const createLinearAdapter = defineAdapter<LinearAdapterConfig>({
     dateAdded: "2024-04-05",
     websiteUrl: "https://linear.app",
     docsUrl: "https://developers.linear.app/docs",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["issue-tracking"] as const,
 
   tokenMetadata: {
     expiresInSeconds: 86_400, // 24 hours
-    refreshable: false, // Linear does not support refresh
-    rotatesRefreshToken: false,
-    requiresRefreshLock: false,
+    refreshable: true,
+    // Linear issues a new refresh_token on every refresh (RFC 6749 rotation)
+    rotatesRefreshToken: true,
+    requiresRefreshLock: true,
   },
 
   createOAuthHandler: (config) => createLinearOAuth(config),

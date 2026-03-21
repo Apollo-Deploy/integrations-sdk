@@ -24,6 +24,7 @@ export const createGithubAdapter = defineAdapter<GithubAdapterConfig>({
     dateAdded: "2024-01-15",
     websiteUrl: "https://github.com",
     docsUrl: "https://docs.github.com/en/apps",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["source-control"] as const,
 

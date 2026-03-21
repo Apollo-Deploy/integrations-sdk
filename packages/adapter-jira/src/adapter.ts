@@ -14,6 +14,7 @@ export const createJiraAdapter = defineAdapter<JiraAdapterConfig>({
     dateAdded: "2024-01-20",
     websiteUrl: "https://www.atlassian.com/software/jira",
     docsUrl: "https://developer.atlassian.com/cloud/jira",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["issue-tracking"] as const,
 

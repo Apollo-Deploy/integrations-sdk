@@ -18,7 +18,6 @@ export function createLinearOAuth(config: LinearAdapterConfig): OAuthHandler {
     clientAuth: ClientSecretPost(config.clientSecret),
     defaultScopes: ["read", "write"],
     scopeSeparator: ",",
-    extraAuthParams: { prompt: "consent" },
     async getIdentity(accessToken) {
       const resp = await fetch("https://api.linear.app/graphql", {
         method: "POST",

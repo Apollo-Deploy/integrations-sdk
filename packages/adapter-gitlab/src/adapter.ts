@@ -15,14 +15,16 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
     dateAdded: "2024-02-01",
     websiteUrl: "https://gitlab.com",
     docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html",
+    auth: { method: "oauth2" as const },
   },
   capabilities: ["source-control", "issue-tracking"] as const,
 
   tokenMetadata: {
     expiresInSeconds: 7_200, // 2 hours
     refreshable: true,
-    rotatesRefreshToken: false, // GitLab refresh tokens are long-lived
-    requiresRefreshLock: false,
+    // GitLab invalidates existing tokens and issues new ones on refresh
+    rotatesRefreshToken: true,
+    requiresRefreshLock: true,
   },
 
   createOAuthHandler: (config) => createGitlabOAuth(config),
