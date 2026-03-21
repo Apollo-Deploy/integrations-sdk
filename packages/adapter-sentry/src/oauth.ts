@@ -12,181 +12,106 @@
  *    Token endpoint:         https://sentry.io/oauth/token/
  *
  * This handler supports both. When clientId/clientSecret are provided it uses
- * the proper OAuth flow; otherwise it short-circuits with the static authToken.
+ * the proper OAuth flow via createOAuthHandler; otherwise it short-circuits
+ * with the static authToken.
  */
 
-import { OAuthError, TokenRefreshError } from "@apollo-deploy/integrations";
+import {
+  createOAuthHandler,
+  ClientSecretPost,
+  OAuthError,
+  TokenRefreshError,
+} from "@apollo-deploy/integrations";
 import type {
   OAuthHandler,
   ProviderIdentity,
+  TokenEndpointResponse,
 } from "@apollo-deploy/integrations";
 import type { SentryAdapterConfig } from "./types.js";
 
-const BASE = "https://sentry.io";
+const BASE_DEFAULT = "https://sentry.io";
+
+async function getSentryIdentity(
+  base: string,
+  accessToken: string,
+): Promise<ProviderIdentity> {
+  const resp = await fetch(`${base}/api/0/users/me/`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) {
+    throw new OAuthError(
+      "sentry",
+      `getIdentity failed: ${String(resp.status)}`,
+    );
+  }
+  const me = (await resp.json()) as {
+    id: string;
+    username: string;
+    email: string;
+    name: string;
+    avatar?: { avatarUrl?: string };
+  };
+  return {
+    providerAccountId: me.id,
+    displayName: me.name,
+    email: me.email,
+    avatarUrl: me.avatar?.avatarUrl,
+    metadata: { username: me.username },
+  };
+}
+
+/**
+ * Sentry returns both `expires_in` (seconds) and `expires_at` (ISO string).
+ * Prefer the absolute timestamp when present.
+ */
+function sentryExpiresAt(result: TokenEndpointResponse): Date | undefined {
+  const raw = result as { expires_at?: string };
+  if (raw.expires_at != null) return new Date(raw.expires_at);
+  if (result.expires_in != null)
+    return new Date(Date.now() + result.expires_in * 1000);
+  return undefined;
+}
 
 export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
-  const base = config.baseUrl?.replace(/\/$/, "") ?? BASE;
+  const base = config.baseUrl?.replace(/\/$/, "") ?? BASE_DEFAULT;
 
-  return {
-    getAuthorizationUrl({ state, scopes, redirectUri }) {
-      if (config.clientId == null || config.clientId === "") {
-        // Static auth token flow — no OAuth redirect needed.
-        // Return a placeholder; the UI should render the credential form instead.
+  // Static auth-token flow — no OAuth redirect needed
+  if (config.clientId == null || config.clientId === "") {
+    return {
+      getAuthorizationUrl() {
         return `${base}/settings/account/api/auth-tokens/`;
-      }
-      const url = new URL(`${base}/oauth/authorize/`);
-      url.searchParams.set("client_id", config.clientId);
-      url.searchParams.set("response_type", "code");
-      url.searchParams.set("state", state);
-      url.searchParams.set("redirect_uri", redirectUri);
-      if (scopes.length > 0) {
-        url.searchParams.set("scope", scopes.join(" "));
-      }
-      return url.toString();
-    },
-
-    async exchangeCode({ code, redirectUri }) {
-      if (
-        config.clientId == null ||
-        config.clientId === "" ||
-        config.clientSecret == null ||
-        config.clientSecret === ""
-      ) {
-        // Static auth token — code is the token itself (credential form flow).
-        return {
-          accessToken: code,
-          scope: "",
-          providerData: { static: true },
-        };
-      }
-      try {
-        const resp = await fetch(`${base}/oauth/token/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "authorization_code",
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            code,
-            redirect_uri: redirectUri,
-          }),
-        });
-        if (!resp.ok) {
-          const err = await resp.text();
-          throw new OAuthError("sentry", `Code exchange failed: ${err}`);
-        }
-        const data = (await resp.json()) as {
-          access_token: string;
-          refresh_token?: string;
-          expires_in?: number;
-          expires_at?: string;
-          token_type: string;
-          scope?: string;
-        };
-        return {
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          scope: data.scope ?? "",
-          expiresAt:
-            data.expires_at != null
-              ? new Date(data.expires_at)
-              : data.expires_in != null
-                ? new Date(Date.now() + data.expires_in * 1000)
-                : undefined,
-          providerData: {},
-        };
-      } catch (err) {
-        if (err instanceof OAuthError) throw err;
-        throw new OAuthError("sentry", `Code exchange error: ${String(err)}`);
-      }
-    },
-
-    async refreshToken(refreshToken) {
-      if (
-        config.clientId == null ||
-        config.clientId === "" ||
-        config.clientSecret == null ||
-        config.clientSecret === ""
-      ) {
-        // Static token — nothing to refresh.
+      },
+      async exchangeCode({ code }) {
+        return { accessToken: code, scope: "", providerData: { static: true } };
+      },
+      refreshToken() {
         throw new TokenRefreshError(
           "sentry",
           "Static auth tokens cannot be refreshed. Re-enter the token.",
           false,
         );
-      }
-      try {
-        const resp = await fetch(`${base}/oauth/token/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            refresh_token: refreshToken,
-          }),
-        });
-        if (!resp.ok) {
-          const err = await resp.text();
-          throw new TokenRefreshError(
-            "sentry",
-            `Token refresh failed: ${err}`,
-            false,
-          );
-        }
-        const data = (await resp.json()) as {
-          access_token: string;
-          refresh_token?: string;
-          expires_in?: number;
-          expires_at?: string;
-          scope?: string;
-        };
-        return {
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token ?? refreshToken,
-          scope: data.scope ?? "",
-          expiresAt:
-            data.expires_at != null
-              ? new Date(data.expires_at)
-              : data.expires_in != null
-                ? new Date(Date.now() + data.expires_in * 1000)
-                : undefined,
-          providerData: {},
-        };
-      } catch (err) {
-        if (err instanceof TokenRefreshError) throw err;
-        throw new TokenRefreshError(
-          "sentry",
-          `Token refresh error: ${String(err)}`,
-          false,
-        );
-      }
-    },
+      },
+      getIdentity: (token) => getSentryIdentity(base, token),
+    };
+  }
 
-    async getIdentity(accessToken): Promise<ProviderIdentity> {
-      const meResp = await fetch(`${base}/api/0/users/me/`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!meResp.ok) {
-        throw new OAuthError(
-          "sentry",
-          `getIdentity failed: ${String(meResp.status)}`,
-        );
-      }
-      const me = (await meResp.json()) as {
-        id: string;
-        username: string;
-        email: string;
-        name: string;
-        avatar?: { avatarUrl?: string };
-      };
-      return {
-        providerAccountId: me.id,
-        displayName: me.name,
-        email: me.email,
-        avatarUrl: me.avatar?.avatarUrl,
-        metadata: { username: me.username },
-      };
+  if (config.clientSecret == null || config.clientSecret === "") {
+    throw new OAuthError(
+      "sentry",
+      "clientSecret is required for Sentry OAuth2 flow",
+    );
+  }
+
+  return createOAuthHandler({
+    provider: "sentry",
+    as: {
+      issuer: base,
+      authorization_endpoint: `${base}/oauth/authorize/`,
+      token_endpoint: `${base}/oauth/token/`,
     },
-  };
+    client: { client_id: config.clientId },
+    clientAuth: ClientSecretPost(config.clientSecret),
+    toExpiresAt: sentryExpiresAt,
+    getIdentity: (token) => getSentryIdentity(base, token),
+  });
 }

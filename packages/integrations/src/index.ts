@@ -65,6 +65,16 @@ export type {
   PostAuthResult,
 } from "./types/oauth.js";
 
+// ── OAuth Factory ─────────────────────────────────────────────────────────────
+export { createOAuthHandler, ClientSecretPost } from "./oauth.js";
+export type {
+  StandardOAuthOptions,
+  AuthorizationServer,
+  Client,
+  ClientAuth,
+  TokenEndpointResponse,
+} from "./oauth.js";
+
 // ── Webhook Types ─────────────────────────────────────────────────────────────
 export type {
   WebhookHandler,
