@@ -97,6 +97,7 @@ export type {
   CommitStatusesOpts,
   ReleaseWindowRef,
   ReleaseWindowComparison,
+  GetChangedFilesOpts,
   CompareReleaseWindowsOpts,
   Channel,
   MessagePayload,

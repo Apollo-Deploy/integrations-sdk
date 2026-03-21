@@ -10,6 +10,7 @@ import type {
   CommitStatusInput,
   CommitStatusesOpts,
   CompareReleaseWindowsOpts,
+  GetChangedFilesOpts,
   Paginated,
   PaginationOpts,
   PullRequest,
@@ -109,6 +110,23 @@ export interface SourceControlCapability {
     sha: string,
     opts?: CommitStatusesOpts,
   ): Promise<Paginated<CommitStatus>>;
+
+  // ── Changed Files Between Refs ────────────────────────────────────────────
+
+  /**
+   * List files changed between two refs (tags, branches, or SHAs).
+   *
+   * Maps to:
+   * - GitHub:  GET /repos/{owner}/{repo}/compare/{base}...{head}
+   * - GitLab:  GET /projects/{id}/repository/compare?from={base}&to={head}
+   */
+  getChangedFiles(
+    tokens: TokenSet,
+    repoId: string,
+    base: string,
+    head: string,
+    opts?: GetChangedFilesOpts,
+  ): Promise<ChangedFile[]>;
 
   // ── Release Window Comparison ──────────────────────────────────────────────
 

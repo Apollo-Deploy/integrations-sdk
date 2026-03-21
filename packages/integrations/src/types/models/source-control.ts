@@ -192,6 +192,13 @@ export interface ReleaseWindowComparison {
   url?: string;
 }
 
+export interface GetChangedFilesOpts {
+  /** Include unified diff patches in file results. Default: false. */
+  includeDiffs?: boolean;
+  /** Restrict results to files under this path prefix. */
+  path?: string;
+}
+
 export interface CompareReleaseWindowsOpts {
   /** Include unified diff patches in the changed-file results. Default: false. */
   includeDiffs?: boolean;

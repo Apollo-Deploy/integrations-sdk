@@ -14,6 +14,7 @@ import type {
   CommitStatusesOpts,
   ReleaseWindowComparison,
   CompareReleaseWindowsOpts,
+  GetChangedFilesOpts,
 } from "@apollo-deploy/integrations";
 import type { GitlabAdapterConfig } from "../types.js";
 
@@ -433,6 +434,35 @@ export function createGitlabSourceControl(
     },
 
     // ── Release Window Comparison ────────────────────────────────────────────
+
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
+    async getChangedFiles(
+      tokens: TokenSet,
+      repoId: string,
+      baseRef: string,
+      headRef: string,
+      opts?: GetChangedFilesOpts,
+    ): Promise<ChangedFile[]> {
+      const encoded = encodeURIComponent(repoId);
+      const resp = await glFetch(
+        base,
+        tokens.accessToken,
+        `/projects/${encoded}/repository/compare?from=${encodeURIComponent(baseRef)}&to=${encodeURIComponent(headRef)}`,
+      );
+      const data = (await resp.json()) as Record<string, unknown>;
+      const diffs = (data.diffs as Record<string, unknown>[]) ?? [];
+      return diffs
+        .map((d): ChangedFile => ({
+          filename: d.new_path as string,
+          status: d.renamed_file ? "renamed" : d.deleted_file ? "deleted" : d.new_file ? "added" : "modified",
+          additions: (d.added_lines as number | undefined) ?? 0,
+          deletions: (d.removed_lines as number | undefined) ?? 0,
+          changes: ((d.added_lines as number | undefined) ?? 0) + ((d.removed_lines as number | undefined) ?? 0),
+          patch: opts?.includeDiffs ? (d.diff as string | undefined) : undefined,
+          previousFilename: d.renamed_file ? (d.old_path as string) : undefined,
+        }))
+        .filter((f) => opts?.path == null || f.filename.startsWith(opts.path));
+    },
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async compareReleaseWindows(

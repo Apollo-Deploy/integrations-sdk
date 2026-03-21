@@ -18,6 +18,7 @@ import type {
   CommitStatusesOpts,
   ReleaseWindowComparison,
   CompareReleaseWindowsOpts,
+  GetChangedFilesOpts,
   PullRequest,
 } from "@apollo-deploy/integrations";
 import { CapabilityError } from "@apollo-deploy/integrations";
@@ -468,6 +469,35 @@ export function createGithubSourceControl(
     },
 
     // ── Release Window Comparison ────────────────────────────────────────────
+
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
+    async getChangedFiles(
+      tokens: TokenSet,
+      repoId: string,
+      base: string,
+      head: string,
+      opts?: GetChangedFilesOpts,
+    ): Promise<ChangedFile[]> {
+      try {
+        const { owner, repo } = parseRepoId(repoId);
+        const octokit = client(tokens);
+        const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
+          owner,
+          repo,
+          basehead: `${base}...${head}`,
+        });
+        const files = (data.files ?? []) as unknown as Record<string, unknown>[];
+        return files
+          .map((f) => mapChangedFile(f))
+          .filter((f) => opts?.path == null || f.filename.startsWith(opts.path))
+          .map((f) => {
+            if (!opts?.includeDiffs) f.patch = undefined;
+            return f;
+          });
+      } catch (err) {
+        throw mapGithubError(err);
+      }
+    },
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async compareReleaseWindows(
