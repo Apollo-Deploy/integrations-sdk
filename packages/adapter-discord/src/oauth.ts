@@ -8,7 +8,7 @@ import type { DiscordAdapterConfig } from "./types.js";
 
 const AS = {
   issuer: "https://discord.com",
-  authorization_endpoint: "https://discord.com/api/oauth2/authorize",
+  authorization_endpoint: "https://discord.com/oauth2/authorize",
   token_endpoint: "https://discord.com/api/oauth2/token",
 };
 

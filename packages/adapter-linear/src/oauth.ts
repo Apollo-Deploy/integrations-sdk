@@ -19,7 +19,6 @@ export function createLinearOAuth(config: LinearAdapterConfig): OAuthHandler {
     defaultScopes: ["read", "write"],
     scopeSeparator: ",",
     extraAuthParams: { prompt: "consent" },
-    noRefresh: "Linear does not support token refresh — re-authorise",
     async getIdentity(accessToken) {
       const resp = await fetch("https://api.linear.app/graphql", {
         method: "POST",

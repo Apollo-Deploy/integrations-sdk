@@ -32,7 +32,7 @@ export function createJiraOAuth(config: JiraAdapterConfig): OAuthHandler {
     },
     client: { client_id: config.clientId },
     clientAuth: ClientSecretPost(config.clientSecret),
-    defaultScopes: ["read:jira-work", "write:jira-work", "offline_access"],
+    defaultScopes: ["read:jira-work", "write:jira-work", "offline_access", "read:me"],
     // Atlassian requires audience + forced consent prompt on every authorization
     extraAuthParams: { audience: "api.atlassian.com", prompt: "consent" },
     async getIdentity(accessToken) {
@@ -46,13 +46,13 @@ export function createJiraOAuth(config: JiraAdapterConfig): OAuthHandler {
         );
       const data = (await resp.json()) as {
         account_id: string;
-        display_name: string;
+        name: string;
         email?: string;
         picture?: string;
       };
       return {
         providerAccountId: data.account_id,
-        displayName: data.display_name,
+        displayName: data.name,
         email: data.email,
         avatarUrl: data.picture,
         metadata: {},
