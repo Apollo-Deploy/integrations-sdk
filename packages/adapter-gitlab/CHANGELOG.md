@@ -1,5 +1,23 @@
 # @apollo-deploy/adapter-gitlab
 
+## 1.4.0
+
+### Minor Changes
+
+- 20d57dd: feat: move compareReleaseWindows to monitoring capability
+- 5f506a8: feat: centralise OAuth2 in core with createOAuthHandler factory
+- 3f7bce1: feat: add getChangedFiles to source control capability
+
+### Patch Changes
+
+- 943eac6: Merge pull request #6 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [20d57dd]
+- Updated dependencies [9deb1f1]
+- Updated dependencies [943eac6]
+- Updated dependencies [5f506a8]
+- Updated dependencies [3f7bce1]
+  - @apollo-deploy/integrations@1.5.0
+
 ## 1.3.1
 
 ### Patch Changes

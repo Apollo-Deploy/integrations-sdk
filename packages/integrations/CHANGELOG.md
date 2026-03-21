@@ -1,5 +1,18 @@
 # @apollo-deploy/integrations
 
+## 1.5.0
+
+### Minor Changes
+
+- 20d57dd: feat: move compareReleaseWindows to monitoring capability
+- 5f506a8: feat: centralise OAuth2 in core with createOAuthHandler factory
+- 3f7bce1: feat: add getChangedFiles to source control capability
+
+### Patch Changes
+
+- 9deb1f1: refactor: move ReleaseWindow exports to monitoring section in index.ts
+- 943eac6: Merge pull request #6 from Apollo-Deploy/changeset-release/main
+
 ## 1.4.1
 
 ### Patch Changes

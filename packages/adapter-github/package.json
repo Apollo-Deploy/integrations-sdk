@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-github",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "GitHub adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "^1.4.1",
+    "@apollo-deploy/integrations": "^1.5.0",
     "@octokit/rest": "^20.1.1",
     "@octokit/auth-app": "^7.1.1"
   },

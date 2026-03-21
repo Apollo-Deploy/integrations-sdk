@@ -1,5 +1,22 @@
 # @apollo-deploy/adapter-discord
 
+## 1.3.0
+
+### Minor Changes
+
+- 5f506a8: feat: centralise OAuth2 in core with createOAuthHandler factory
+
+### Patch Changes
+
+- 2f0242d: fix: correct OAuth endpoint/field bugs found via context7 audit
+- 943eac6: Merge pull request #6 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [20d57dd]
+- Updated dependencies [9deb1f1]
+- Updated dependencies [943eac6]
+- Updated dependencies [5f506a8]
+- Updated dependencies [3f7bce1]
+  - @apollo-deploy/integrations@1.5.0
+
 ## 1.2.4
 
 ### Patch Changes
