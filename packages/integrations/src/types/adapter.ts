@@ -59,26 +59,6 @@ export type AuthMethod =
   | "none";
 
 /**
- * A single step in the connection setup flow presented to the user.
- *
- * - `oauth_only`           — Single "Authorize" button (no form).
- * - `credential_form`      — Render a form built from `credentialInputs`.
- * - `oauth_then_configure` — OAuth button → post-auth configuration step.
- * - `none`                 — One-click install, no credentials needed.
- */
-export type SetupFlowStep =
-  | "oauth_only"
-  | "credential_form"
-  | "oauth_then_configure"
-  | "none";
-
-/**
- * Ordered list of setup steps the client UI must render to complete connection.
- * An empty array means no setup is required.
- */
-export type SetupFlow = SetupFlowStep[];
-
-/**
  * A single credential field the connect UI must render.
  */
 export interface CredentialInputField {
@@ -136,22 +116,16 @@ export interface ConfigField {
 }
 
 /**
- * Authentication configuration defined by an adapter.
- * The hub derives the client-safe `SetupFlow` from this at runtime.
+ * Authentication configuration declared by an adapter.
  */
 export interface AdapterAuthConfig {
-  /** Internal authentication mechanism. */
+  /** Authentication mechanism — drives what the UI renders. */
   method: AuthMethod;
   /**
-   * Explicit setup flow override. When omitted the hub auto-derives it:
-   *   method=oauth2 → 'oauth_only',  method=none → 'none',  else → 'credential_form'.
-   */
-  setupFlow?: SetupFlow;
-  /**
-   * Ordered list of credential fields to render in the connect UI.
+   * Credential fields to render in the connect UI.
    * Omit for pure OAuth flows.
    */
-  credentialInputs?: CredentialInputField[];
+  fields?: CredentialInputField[];
   /**
    * OAuth scopes requested during authorization.
    * Server-only — never serialised to the client.
@@ -161,12 +135,15 @@ export interface AdapterAuthConfig {
 
 /**
  * Client-safe subset of `AdapterAuthConfig`.
- * Exposed via the listing endpoint — contains only what the UI needs to render.
+ * Exposed via the listing endpoint — contains only what the UI needs.
+ *
+ * UI rendering rules:
+ *   method="oauth2", no fields → OAuth button only
+ *   method="oauth2" + fields   → mode picker (OAuth | form)
+ *   any other method + fields  → form only
  */
 export interface ClientAuthConfig {
-  /** What the UI should render. */
-  setupFlow: SetupFlow;
-  /** Credential fields (only for `credential_form`). */
+  method: AuthMethod;
   fields?: CredentialInputField[];
 }
 

@@ -18,7 +18,6 @@ import type {
   ConfigField,
   IntegrationAdapter,
   Logger,
-  SetupFlow,
 } from "./types/adapter.js";
 import type { IntegrationEvent } from "./types/models/index.js";
 import type { CryptoProvider } from "./crypto.js";
@@ -188,32 +187,12 @@ export class IntegrationHub<
   }
 
   /**
-   * Derive the client-safe auth config from the adapter's raw auth config.
-   * Strips `oauthScopes` and auto-derives `setupFlow` when not explicitly set.
+   * Strip server-only fields (`oauthScopes`) from the adapter's auth config.
    */
   private static _toClientAuth(raw: AdapterAuthConfig): ClientAuthConfig {
-    const flow: SetupFlow =
-      raw.setupFlow ?? IntegrationHub._deriveSetupFlow(raw);
-    const result: ClientAuthConfig = { setupFlow: flow };
-    if (raw.credentialInputs && raw.credentialInputs.length > 0) {
-      result.fields = raw.credentialInputs;
-    }
+    const result: ClientAuthConfig = { method: raw.method };
+    if (raw.fields && raw.fields.length > 0) result.fields = raw.fields;
     return result;
-  }
-
-  /**
-   * Auto-derive `setupFlow` from `method` when the adapter doesn't specify one.
-   */
-  private static _deriveSetupFlow(raw: AdapterAuthConfig): SetupFlow {
-    const hasFields = (raw.credentialInputs?.length ?? 0) > 0;
-    switch (raw.method) {
-      case "oauth2":
-        return hasFields ? ["oauth_only", "credential_form"] : ["oauth_only"];
-      case "none":
-        return [];
-      default:
-        return ["credential_form"];
-    }
   }
 
   // ── Event Subscriptions ───────────────────────────────────────────────────
