@@ -7,7 +7,7 @@ import type { AdapterAuthConfig } from "@apollo-deploy/integrations";
 
 const auth: AdapterAuthConfig = {
   method: "api_key",
-  credentialInputs: [
+  fields: [
     {
       key: "issuerId",
       label: "Issuer ID",

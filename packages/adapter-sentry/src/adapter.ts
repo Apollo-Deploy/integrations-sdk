@@ -2,8 +2,12 @@
  * Sentry adapter factory.
  *
  * Authentication: static auth token (Bearer) or OAuth 2.0.
- * Token model: static tokens never expire; OAuth tokens expire in ~8h.
- * Auth method: api_key (static token) or oauth2 (internal integration).
+ * Token model: static tokens never expire; OAuth tokens expire in ~30 days.
+ * Auth method: api_key (static token) or oauth2 (internal/public integration).
+ *
+ * Mode selection at runtime:
+ *   - clientId + clientSecret provided → full OAuth 2.0 authorization-code flow
+ *   - only authToken provided          → static Bearer token (no redirect)
  *
  * Capabilities: monitoring (errors, vitals, logs, replays, releases, alerts, crons).
  */
@@ -29,16 +33,18 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
     websiteUrl: "https://sentry.io",
     docsUrl: "https://docs.sentry.io/api/",
     auth: {
-      method: "api_key" as const,
-      credentialInputs: [
+      method: "oauth2" as const,
+      fields: [
         {
           key: "authToken",
           label: "Auth Token",
           type: "password" as const,
-          required: true,
+          required: false,
           placeholder: "sntrys_...",
           helpText:
-            "Generate at Sentry → Settings → Auth Tokens. Required scopes: org:read, project:read, event:read, alerts:read, releases.",
+            "Static token mode: generate at Sentry → Settings → Auth Tokens. " +
+            "Required scopes: org:read, project:read, event:read, alerts:read, releases. " +
+            "Use this instead of OAuth 2.0 when you don't need per-user authorization.",
         },
         {
           key: "defaultOrgSlug",
@@ -64,9 +70,11 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
   capabilities: ["monitoring"] as const,
 
   tokenMetadata: {
-    // Static auth tokens do not expire. OAuth tokens expire in ~8h.
-    expiresInSeconds: null,
-    refreshable: false,
+    // OAuth tokens expire in ~30 days; static auth tokens never expire.
+    // expiresInSeconds reflects the OAuth2 case. The static-token handler
+    // always throws TokenRefreshError(false) so the hub will not retry.
+    expiresInSeconds: 2592000,
+    refreshable: true,
     rotatesRefreshToken: false,
     requiresRefreshLock: false,
   },
