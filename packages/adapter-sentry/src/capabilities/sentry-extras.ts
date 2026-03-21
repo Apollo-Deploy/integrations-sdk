@@ -61,13 +61,15 @@ export function createSentryExtras(ctx: SentryContext): SentryExtras {
       opts: SentryStatsQueryOpts = {},
     ): Promise<SentryStats> {
       try {
-        const resp = await ctx.get(tokens, `/organizations/${orgSlug}/stats/`, {
+        const resp = await ctx.get(tokens, `/organizations/${orgSlug}/stats_v2/`, {
           project: opts.project,
           environment: opts.environment,
-          stat: opts.stat ?? "received",
-          since: opts.since,
-          until: opts.until,
-          resolution: opts.resolution,
+          field: opts.stat === "rejected" ? "sum(times_seen)" : "sum(quantity)",
+          groupBy: opts.environment ? "outcome" : undefined,
+          statsPeriod: opts.since == null && opts.until == null ? "24h" : undefined,
+          start: opts.since,
+          end: opts.until,
+          interval: opts.resolution ?? "1h",
         });
         await assertOk(resp, "getStats");
         return (await resp.json()) as SentryStats;

@@ -22,10 +22,9 @@ export function createSentryMetrics(
           {
             project: opts.project,
             environment: opts.environment,
-            mri: opts.metric,
             field: `${opts.aggregate}(${opts.metric})`,
             query: opts.query,
-            groupBy: opts.groupBy?.join(","),
+            groupBy: opts.groupBy,
             statsPeriod: opts.statsPeriod ?? "24h",
             start: opts.start,
             end: opts.end,

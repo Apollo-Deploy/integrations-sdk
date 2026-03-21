@@ -6,7 +6,7 @@ export interface SentryContext {
   get(
     tokens: TokenSet,
     path: string,
-    params?: Record<string, string | number | boolean | undefined>,
+    params?: Record<string, string | number | boolean | string[] | undefined>,
   ): Promise<Response>;
   post(tokens: TokenSet, path: string, body: unknown): Promise<Response>;
   put(tokens: TokenSet, path: string, body: unknown): Promise<Response>;
@@ -46,15 +46,27 @@ export function createSentryContext(
     return new Date(value);
   }
 
+  function applyParam(
+    search: URLSearchParams,
+    k: string,
+    v: string | number | boolean | string[],
+  ): void {
+    if (Array.isArray(v)) {
+      v.forEach((item) => { search.append(k, item); });
+    } else {
+      search.set(k, String(v));
+    }
+  }
+
   async function get(
     tokens: TokenSet,
     path: string,
-    params?: Record<string, string | number | boolean | undefined>,
+    params?: Record<string, string | number | boolean | string[] | undefined>,
   ): Promise<Response> {
     const url = new URL(`${base}${path}`);
     if (params) {
       for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined) url.searchParams.set(k, String(v));
+        if (v !== undefined) applyParam(url.searchParams, k, v);
       }
     }
     return fetch(url.toString(), { headers: headers(tokens) });

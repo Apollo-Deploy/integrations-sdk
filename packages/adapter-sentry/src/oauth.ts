@@ -79,6 +79,7 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
           access_token: string;
           refresh_token?: string;
           expires_in?: number;
+          expires_at?: string;
           token_type: string;
           scope?: string;
         };
@@ -87,9 +88,11 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
           refreshToken: data.refresh_token,
           scope: data.scope ?? "",
           expiresAt:
-            data.expires_in != null
-              ? new Date(Date.now() + data.expires_in * 1000)
-              : undefined,
+            data.expires_at != null
+              ? new Date(data.expires_at)
+              : data.expires_in != null
+                ? new Date(Date.now() + data.expires_in * 1000)
+                : undefined,
           providerData: {},
         };
       } catch (err) {
@@ -135,6 +138,7 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
           access_token: string;
           refresh_token?: string;
           expires_in?: number;
+          expires_at?: string;
           scope?: string;
         };
         return {
@@ -142,9 +146,11 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
           refreshToken: data.refresh_token ?? refreshToken,
           scope: data.scope ?? "",
           expiresAt:
-            data.expires_in != null
-              ? new Date(Date.now() + data.expires_in * 1000)
-              : undefined,
+            data.expires_at != null
+              ? new Date(data.expires_at)
+              : data.expires_in != null
+                ? new Date(Date.now() + data.expires_in * 1000)
+                : undefined,
           providerData: {},
         };
       } catch (err) {
@@ -158,10 +164,6 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
     },
 
     async getIdentity(accessToken): Promise<ProviderIdentity> {
-      const _resp = await fetch(`${base}/api/0/`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      // /api/0/ returns basic auth info; try /api/0/users/me/ for user details
       const meResp = await fetch(`${base}/api/0/users/me/`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -176,13 +178,13 @@ export function createSentryOAuth(config: SentryAdapterConfig): OAuthHandler {
         username: string;
         email: string;
         name: string;
-        avatarUrl?: string;
+        avatar?: { avatarUrl?: string };
       };
       return {
         providerAccountId: me.id,
         displayName: me.name,
         email: me.email,
-        avatarUrl: me.avatarUrl,
+        avatarUrl: me.avatar?.avatarUrl,
         metadata: { username: me.username },
       };
     },
