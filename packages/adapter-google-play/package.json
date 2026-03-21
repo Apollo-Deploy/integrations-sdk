@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-google-play",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Google Play Console adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "^1.4.1"
+    "@apollo-deploy/integrations": "^1.5.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
