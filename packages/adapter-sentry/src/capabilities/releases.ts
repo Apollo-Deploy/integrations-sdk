@@ -154,20 +154,29 @@ export function createSentryReleases(
         await assertOk(baseResp, "compareReleaseWindows (base)");
         await assertOk(headResp, "compareReleaseWindows (head)");
 
-        const baseCommits = new Set<string>(
-          ((await baseResp.json()) as { id: string }[]).map((c) => c.id),
+        const baseCommitIds = ((await baseResp.json()) as { id: string }[]).map(
+          (c) => c.id,
         );
-        const headCommits = ((await headResp.json()) as { id: string }[]).map(
+        const headCommitIds = ((await headResp.json()) as { id: string }[]).map(
           (c) => c.id,
         );
 
-        const aheadBy = headCommits.filter((id) => !baseCommits.has(id)).length;
-        const behindBy = 0; // Sentry doesn't expose behind count
+        const baseSet = new Set<string>(baseCommitIds);
+        const headSet = new Set<string>(headCommitIds);
+
+        const aheadBy = headCommitIds.filter((id) => !baseSet.has(id)).length;
+        const behindBy = baseCommitIds.filter((id) => !headSet.has(id)).length;
+
+        let status: ReleaseWindowComparison["status"];
+        if (aheadBy === 0 && behindBy === 0) status = "identical";
+        else if (aheadBy > 0 && behindBy === 0) status = "ahead";
+        else if (aheadBy === 0 && behindBy > 0) status = "behind";
+        else status = "diverged";
 
         return {
           base: { ref: base },
           head: { ref: head },
-          status: aheadBy === 0 ? "identical" : "ahead",
+          status,
           aheadBy,
           behindBy,
         };
