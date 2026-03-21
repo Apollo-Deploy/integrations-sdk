@@ -152,61 +152,9 @@ export interface CommitStatusesOpts extends PaginationOpts {
   context?: string;
 }
 
-// ─── Release Window Comparison ───────────────────────────────────────────────
-
-/**
- * One end of a release window — a tag, branch, or commit SHA.
- */
-export interface ReleaseWindowRef {
-  /** The ref as supplied (tag name, branch name, or SHA). */
-  ref: string;
-  /** Resolved commit SHA, if returned by the service. */
-  sha?: string;
-  /** Timestamp of the ref's commit, if resolvable. */
-  timestamp?: Date;
-}
-
-/**
- * Result of comparing two release windows (base → head).
- */
-export interface ReleaseWindowComparison {
-  base: ReleaseWindowRef;
-  head: ReleaseWindowRef;
-  /** Relationship between base and head. */
-  status: "ahead" | "behind" | "diverged" | "identical";
-  /** How many commits head is ahead of base. */
-  aheadBy: number;
-  /** How many commits head is behind base (>0 only when diverged/behind). */
-  behindBy: number;
-  /** Common ancestor SHA. */
-  mergeBaseSha?: string;
-  /** Commits reachable from head but not base, most-recent first. */
-  commits: Commit[];
-  /** Files that differ between base and head. */
-  changedFiles: ChangedFile[];
-  totalAdditions: number;
-  totalDeletions: number;
-  /** Merged PRs/MRs whose merge commit falls inside the window (if requested). */
-  mergedPullRequests: PullRequest[];
-  /** Link to the comparison view on the service. */
-  url?: string;
-}
-
 export interface GetChangedFilesOpts {
   /** Include unified diff patches in file results. Default: false. */
   includeDiffs?: boolean;
   /** Restrict results to files under this path prefix. */
-  path?: string;
-}
-
-export interface CompareReleaseWindowsOpts {
-  /** Include unified diff patches in the changed-file results. Default: false. */
-  includeDiffs?: boolean;
-  /**
-   * Fetch merged pull requests whose merge commit falls in the window.
-   * Default: false.
-   */
-  includePullRequests?: boolean;
-  /** Restrict changed files to those under this path prefix. */
   path?: string;
 }

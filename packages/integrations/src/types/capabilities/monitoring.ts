@@ -55,6 +55,8 @@ import type {
   MonitoringTagValue,
   MonitoringUserFeedback,
   CreateUserFeedbackInput,
+  ReleaseWindowComparison,
+  CompareReleaseWindowsOpts,
 } from "../models/monitoring.js";
 
 export interface MonitoringCapability {
@@ -415,4 +417,23 @@ export interface MonitoringCapability {
     projectSlug: string,
     input: CreateUserFeedbackInput,
   ): Promise<MonitoringUserFeedback>;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RELEASE WINDOW COMPARISON
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Compare two release versions to produce a high-level diff summary:
+   * aheadBy/behindBy and relationship status.
+   *
+   * Maps to:
+   * - Sentry:  /organizations/{org}/releases/{version}/commits/ (compare via version)
+   */
+  compareReleaseWindows(
+    tokens: TokenSet,
+    orgSlug: string,
+    base: string,
+    head: string,
+    opts?: CompareReleaseWindowsOpts,
+  ): Promise<ReleaseWindowComparison>;
 }

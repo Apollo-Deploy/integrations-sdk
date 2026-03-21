@@ -9,12 +9,10 @@ import type {
   CommitStatus,
   CommitStatusInput,
   CommitStatusesOpts,
-  CompareReleaseWindowsOpts,
   GetChangedFilesOpts,
   Paginated,
   PaginationOpts,
   PullRequest,
-  ReleaseWindowComparison,
   Repository,
 } from "../models/index.js";
 import type { TokenSet } from "../oauth.js";
@@ -127,22 +125,4 @@ export interface SourceControlCapability {
     head: string,
     opts?: GetChangedFilesOpts,
   ): Promise<ChangedFile[]>;
-
-  // ── Release Window Comparison ──────────────────────────────────────────────
-
-  /**
-   * Compare two refs (tags, branches, or SHAs) to produce a full diff summary:
-   * commits ahead/behind, changed files, stats, and optionally merged PRs.
-   *
-   * Maps to:
-   * - GitHub:  GET /repos/{owner}/{repo}/compare/{base}...{head}
-   * - GitLab:  GET /projects/{id}/repository/compare?from={base}&to={head}
-   */
-  compareReleaseWindows(
-    tokens: TokenSet,
-    repoId: string,
-    base: string,
-    head: string,
-    opts?: CompareReleaseWindowsOpts,
-  ): Promise<ReleaseWindowComparison>;
 }

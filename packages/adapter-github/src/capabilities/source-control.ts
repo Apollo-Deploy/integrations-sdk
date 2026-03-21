@@ -16,10 +16,7 @@ import type {
   CodeScanAlertsOpts,
   CommitStatus,
   CommitStatusesOpts,
-  ReleaseWindowComparison,
-  CompareReleaseWindowsOpts,
   GetChangedFilesOpts,
-  PullRequest,
 } from "@apollo-deploy/integrations";
 import { CapabilityError } from "@apollo-deploy/integrations";
 import {
@@ -494,88 +491,6 @@ export function createGithubSourceControl(
             if (!opts?.includeDiffs) f.patch = undefined;
             return f;
           });
-      } catch (err) {
-        throw mapGithubError(err);
-      }
-    },
-
-    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
-    async compareReleaseWindows(
-      tokens: TokenSet,
-      repoId: string,
-      base: string,
-      head: string,
-      opts?: CompareReleaseWindowsOpts,
-    ): Promise<ReleaseWindowComparison> {
-      try {
-        const { owner, repo } = parseRepoId(repoId);
-        const octokit = client(tokens);
-
-        const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
-          owner,
-          repo,
-          basehead: `${base}...${head}`,
-        });
-
-        const allFiles = (data.files ?? []) as unknown as Record<string, unknown>[];
-        const filteredFiles = allFiles
-          .map((f) => mapChangedFile(f))
-          .filter((f) => opts?.path == null || f.filename.startsWith(opts.path));
-
-        if (!opts?.includeDiffs) {
-          for (const f of filteredFiles) {
-            f.patch = undefined;
-          }
-        }
-
-        const commits = data.commits.map((c) =>
-          mapCommit(c as unknown as Record<string, unknown>),
-        );
-
-        let mergedPullRequests: PullRequest[] = [];
-        if (opts?.includePullRequests) {
-          // GitHub's compare API doesn't directly list merged PRs; we search
-          // by merge commit SHA for each commit in the window.
-          const prPromises = data.commits
-            .filter((c) => c.commit.message.startsWith("Merge pull request"))
-            .map(async (c) => {
-              const prMatch = /Merge pull request #(\d+)/.exec(c.commit.message);
-              if (prMatch == null) return null;
-              const prNumber = Number(prMatch[1]);
-              const { data: pr } = await octokit.rest.pulls.get({
-                owner,
-                repo,
-                pull_number: prNumber,
-              });
-              return mapPullRequest(pr as unknown as Record<string, unknown>);
-            });
-          const results = await Promise.all(prPromises);
-          mergedPullRequests = results.filter(
-            (pr): pr is NonNullable<typeof pr> => pr !== null,
-          );
-        }
-
-        const statusMap: Record<string, ReleaseWindowComparison["status"]> = {
-          ahead: "ahead",
-          behind: "behind",
-          diverged: "diverged",
-          identical: "identical",
-        };
-
-        return {
-          base: { ref: base, sha: data.base_commit.sha },
-          head: { ref: head, sha: data.merge_base_commit.sha },
-          status: statusMap[data.status] ?? "diverged",
-          aheadBy: data.ahead_by,
-          behindBy: data.behind_by,
-          mergeBaseSha: data.merge_base_commit.sha,
-          commits,
-          changedFiles: filteredFiles,
-          totalAdditions: filteredFiles.reduce((n, f) => n + f.additions, 0),
-          totalDeletions: filteredFiles.reduce((n, f) => n + f.deletions, 0),
-          mergedPullRequests,
-          url: data.html_url,
-        };
       } catch (err) {
         throw mapGithubError(err);
       }

@@ -2,6 +2,8 @@ import type { MonitoringCapability } from "@apollo-deploy/integrations";
 import type {
   MonitoringCreateReleaseInput,
   CreateDeployInput,
+  ReleaseWindowComparison,
+  CompareReleaseWindowsOpts,
 } from "@apollo-deploy/integrations";
 import { assertOk, mapSentryError } from "../mappers/errors.js";
 import { mapRelease, mapDeploy } from "../mappers/models.js";
@@ -18,6 +20,7 @@ export function createSentryReleases(
   | "deleteRelease"
   | "listDeploys"
   | "createDeploy"
+  | "compareReleaseWindows"
 > {
   return {
     async listReleases(tokens, orgSlug, opts = {}) {
@@ -119,6 +122,55 @@ export function createSentryReleases(
         );
         await assertOk(resp, "createDeploy");
         return mapDeploy((await resp.json()) as Record<string, unknown>);
+      } catch (err) {
+        throw mapSentryError(err);
+      }
+    },
+
+    // eslint-disable-next-line max-params -- implements interface; method signature is contractual
+    async compareReleaseWindows(
+      tokens,
+      orgSlug,
+      base,
+      head,
+      opts?: CompareReleaseWindowsOpts,
+    ): Promise<ReleaseWindowComparison> {
+      try {
+        const qs = new URLSearchParams();
+        if (opts?.environment) qs.set("environment", opts.environment);
+        if (opts?.project) qs.set("project", opts.project);
+
+        const [baseResp, headResp] = await Promise.all([
+          ctx.get(
+            tokens,
+            `/organizations/${orgSlug}/releases/${encodeURIComponent(base)}/commits/?${qs.toString()}`,
+          ),
+          ctx.get(
+            tokens,
+            `/organizations/${orgSlug}/releases/${encodeURIComponent(head)}/commits/?${qs.toString()}`,
+          ),
+        ]);
+
+        await assertOk(baseResp, "compareReleaseWindows (base)");
+        await assertOk(headResp, "compareReleaseWindows (head)");
+
+        const baseCommits = new Set<string>(
+          ((await baseResp.json()) as { id: string }[]).map((c) => c.id),
+        );
+        const headCommits = ((await headResp.json()) as { id: string }[]).map(
+          (c) => c.id,
+        );
+
+        const aheadBy = headCommits.filter((id) => !baseCommits.has(id)).length;
+        const behindBy = 0; // Sentry doesn't expose behind count
+
+        return {
+          base: { ref: base },
+          head: { ref: head },
+          status: aheadBy === 0 ? "identical" : "ahead",
+          aheadBy,
+          behindBy,
+        };
       } catch (err) {
         throw mapSentryError(err);
       }

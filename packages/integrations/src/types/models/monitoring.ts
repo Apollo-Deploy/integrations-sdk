@@ -642,8 +642,46 @@ export interface MonitoringMember {
   id: string;
   email: string;
   name: string;
-  role: "owner" | "manager" | "admin" | "member" | "contributor";
+  role: "owner" | "manager" | "admin" | "member" | "billing";
   dateCreated: Date;
   expired: boolean;
   pending: boolean;
+}
+
+// ─── Release Window Comparison ───────────────────────────────────────────────
+
+/**
+ * One end of a release window — a tag, branch name, or commit SHA.
+ */
+export interface ReleaseWindowRef {
+  /** The ref as supplied (tag name, branch name, or SHA). */
+  ref: string;
+  /** Resolved commit SHA, if returned by the service. */
+  sha?: string;
+  /** Timestamp of the ref's commit, if resolvable. */
+  timestamp?: Date;
+}
+
+/**
+ * Result of comparing two release windows (base → head).
+ */
+export interface ReleaseWindowComparison {
+  base: ReleaseWindowRef;
+  head: ReleaseWindowRef;
+  /** Relationship between base and head. */
+  status: "ahead" | "behind" | "diverged" | "identical";
+  /** How many commits head is ahead of base. */
+  aheadBy: number;
+  /** How many commits head is behind base (>0 only when diverged/behind). */
+  behindBy: number;
+  /** Common ancestor SHA. */
+  mergeBaseSha?: string;
+  url?: string;
+}
+
+export interface CompareReleaseWindowsOpts {
+  /** Filter to a specific environment/deploy stage. */
+  environment?: string;
+  /** Restrict results to a specific project slug. */
+  project?: string;
 }
