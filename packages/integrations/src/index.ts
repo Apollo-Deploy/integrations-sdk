@@ -96,9 +96,6 @@ export type {
   CommitStatusState,
   CommitStatusesOpts,
   GetChangedFilesOpts,
-  ReleaseWindowRef,
-  ReleaseWindowComparison,
-  CompareReleaseWindowsOpts,
   Channel,
   MessagePayload,
   MessageResult,
@@ -242,6 +239,10 @@ export type {
   IssueStatus,
   MonitoringEnvironment,
   MonitoringPlatform,
+  // Release window comparison
+  ReleaseWindowRef,
+  ReleaseWindowComparison,
+  CompareReleaseWindowsOpts,
 } from "./types/models/index.js";
 
 // ── Capability Interfaces ────────────────────────────────────────────────────────
