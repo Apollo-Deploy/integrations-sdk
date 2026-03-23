@@ -6,7 +6,7 @@ import type { GooglePlayAdapterConfig } from "./types.js";
 import type { AdapterAuthConfig } from "@apollo-deploy/integrations";
 
 const auth: AdapterAuthConfig = {
-  method: "api_key",
+  type: "credential_form",
   fields: [
     {
       key: "serviceAccountJson",

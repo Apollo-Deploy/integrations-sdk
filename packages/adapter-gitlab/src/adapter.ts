@@ -15,7 +15,7 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
     dateAdded: "2024-02-01",
     websiteUrl: "https://gitlab.com",
     docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html",
-    auth: { method: "oauth2" as const },
+    auth: { type: "oauth" },
   },
   capabilities: ["source-control", "issue-tracking"] as const,
 

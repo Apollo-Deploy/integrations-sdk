@@ -170,7 +170,7 @@ export class IntegrationHub<
     return Object.entries(this.adapters).map(([key, adapter]) => {
       const a = adapter;
       const rawAuth: AdapterAuthConfig = a.metadata?.auth ?? {
-        method: "oauth2",
+        type: "oauth",
       };
       return {
         key,
@@ -190,7 +190,9 @@ export class IntegrationHub<
    * Strip server-only fields (`oauthScopes`) from the adapter's auth config.
    */
   private static _toClientAuth(raw: AdapterAuthConfig): ClientAuthConfig {
-    const result: ClientAuthConfig = { method: raw.method };
+    const result: ClientAuthConfig = {};
+    if (raw.type) result.type = raw.type;
+    if (raw.types && raw.types.length > 0) result.types = raw.types;
     if (raw.fields && raw.fields.length > 0) result.fields = raw.fields;
     return result;
   }

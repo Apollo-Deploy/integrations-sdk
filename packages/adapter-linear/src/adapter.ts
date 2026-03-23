@@ -13,7 +13,7 @@ export const createLinearAdapter = defineAdapter<LinearAdapterConfig>({
     dateAdded: "2024-04-05",
     websiteUrl: "https://linear.app",
     docsUrl: "https://developers.linear.app/docs",
-    auth: { method: "oauth2" as const },
+    auth: { type: "oauth" },
   },
   capabilities: ["issue-tracking"] as const,
 

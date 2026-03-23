@@ -46,6 +46,7 @@ export type {
   AdapterMetadata,
   AdapterAuthConfig,
   AuthMethod,
+  AuthType,
   ClientAuthConfig,
   ConfigField,
   CredentialInputField,

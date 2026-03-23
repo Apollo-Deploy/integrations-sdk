@@ -41,22 +41,18 @@ export interface AdapterContext {
 // ─── Auth Method & Setup Flow ────────────────────────────────────────────────
 
 /**
- * Internal authentication mechanism the adapter uses.
+ * Authentication type the adapter uses.
  *
- * - `oauth2`          — Standard OAuth 2.0 authorization-code flow.
- * - `api_key`         — Static API key or personal-access token.
- * - `webhook_secret`  — Inbound webhook with a shared HMAC secret.
- * - `basic`           — Username + password (HTTP Basic or equivalent).
- * - `pat`             — Personal Access Token (provider-issued, not OAuth).
- * - `none`            — No credentials required (public / unauthenticated APIs).
+ * - `oauth`            — OAuth 2.0 authorization-code flow.
+ * - `credential_form`  — Static credentials entered via a form (API keys, tokens, etc.).
+ * - `none`             — No credentials required (public / unauthenticated APIs).
  */
-export type AuthMethod =
-  | "oauth2"
-  | "api_key"
-  | "webhook_secret"
-  | "basic"
-  | "pat"
-  | "none";
+export type AuthType = "oauth" | "credential_form" | "none";
+
+/**
+ * @deprecated Use `AuthType` instead.
+ */
+export type AuthMethod = AuthType;
 
 /**
  * A single credential field the connect UI must render.
@@ -117,13 +113,27 @@ export interface ConfigField {
 
 /**
  * Authentication configuration declared by an adapter.
+ *
+ * Use `type` when only a single auth mechanism is available.
+ * Use `types` when the integration supports multiple auth mechanisms.
+ * Only `credential_form` should declare `fields`.
  */
 export interface AdapterAuthConfig {
-  /** Authentication mechanism — drives what the UI renders. */
-  method: AuthMethod;
+  /**
+   * Single authentication type — use when only one auth mechanism is available.
+   * Only `credential_form` may include `fields`.
+   * Mutually exclusive with `types`.
+   */
+  type?: AuthType;
+  /**
+   * Multiple authentication types — use when the integration supports more
+   * than one auth mechanism (e.g. both credential form and OAuth).
+   * Mutually exclusive with `type`.
+   */
+  types?: AuthType[];
   /**
    * Credential fields to render in the connect UI.
-   * Omit for pure OAuth flows.
+   * Only applicable when `type` is `credential_form` or `types` includes `credential_form`.
    */
   fields?: CredentialInputField[];
   /**
@@ -138,12 +148,13 @@ export interface AdapterAuthConfig {
  * Exposed via the listing endpoint — contains only what the UI needs.
  *
  * UI rendering rules:
- *   method="oauth2", no fields → OAuth button only
- *   method="oauth2" + fields   → mode picker (OAuth | form)
- *   any other method + fields  → form only
+ *   type="oauth", no fields            → OAuth button only
+ *   types=["credential_form", "oauth"] → mode picker (OAuth | form) with fields
+ *   type="credential_form" + fields     → form only
  */
 export interface ClientAuthConfig {
-  method: AuthMethod;
+  type?: AuthType;
+  types?: AuthType[];
   fields?: CredentialInputField[];
 }
 
