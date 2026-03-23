@@ -1,5 +1,15 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.4.3
+
+### Patch Changes
+
+- 8ae0c88: docs: add Sentry adapter docs, monitoring capability, and package READMEs
+- 0e39c54: Merge pull request #8 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [8ae0c88]
+- Updated dependencies [0e39c54]
+  - @apollo-deploy/integrations@1.5.1
+
 ## 1.4.2
 
 ### Patch Changes
