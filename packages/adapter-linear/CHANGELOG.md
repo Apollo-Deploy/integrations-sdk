@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-linear
 
+## 1.3.1
+
+### Patch Changes
+
+- 0e39c54: Merge pull request #8 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [0e39c54]
+  - @apollo-deploy/integrations@1.5.1
+
 ## 1.3.0
 
 ### Minor Changes
