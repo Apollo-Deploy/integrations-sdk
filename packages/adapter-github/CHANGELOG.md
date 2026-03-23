@@ -1,5 +1,15 @@
 # @apollo-deploy/adapter-github
 
+## 1.4.2
+
+### Patch Changes
+
+- d64e481: Chore: Bump Versions
+- 8ae0c88: docs: add Sentry adapter docs, monitoring capability, and package READMEs
+- Updated dependencies [d64e481]
+- Updated dependencies [8ae0c88]
+  - @apollo-deploy/integrations@1.5.2
+
 ## 1.4.1
 
 ### Patch Changes
