@@ -1,0 +1,13 @@
+---
+"@apollo-deploy/integrations": patch
+"@apollo-deploy/adapter-apple": patch
+"@apollo-deploy/adapter-discord": patch
+"@apollo-deploy/adapter-github": patch
+"@apollo-deploy/adapter-gitlab": patch
+"@apollo-deploy/adapter-google-play": patch
+"@apollo-deploy/adapter-jira": patch
+"@apollo-deploy/adapter-linear": patch
+"@apollo-deploy/adapter-slack": patch
+---
+
+docs: add Sentry adapter docs, monitoring capability, and package READMEs
