@@ -1,0 +1,244 @@
+---
+title: Monitoring
+description: Monitor crashes, performance vitals, logs, replays, alerts, and crons with the monitoring capability.
+---
+
+The `monitoring` capability provides a unified interface for application monitoring platforms. Adapters that declare it expose a `monitoring` property implementing the `MonitoringCapability` interface.
+
+**Adapters:** [Sentry](/docs/adapters/sentry)
+
+## Accessing the capability
+
+```typescript title="lib/monitoring.ts" lineNumbers
+import { hub } from '@/lib/integrations';
+
+const sentry = hub.getAdapter('sentry');
+const monitoring = sentry.monitoring!;
+
+// Or get all monitoring adapters
+const monitors = hub.getAdaptersByCapability('monitoring');
+```
+
+---
+
+## Issues
+
+Fetch, triage, and update error issues:
+
+```typescript lineNumbers
+// List unresolved issues
+const issues = await monitoring.listIssues(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  query: 'is:unresolved',
+  limit: 25,
+});
+// issues.items: MonitorIssue[]
+// issues.nextCursor: string | null
+
+// Get a single issue
+const issue = await monitoring.getIssue(tokens, { issueId: '12345' });
+// issue.id, issue.title, issue.status, issue.level, issue.count, issue.firstSeen, issue.lastSeen
+
+// Update an issue
+await monitoring.updateIssue(tokens, { issueId: '12345', status: 'resolved' });
+await monitoring.updateIssue(tokens, { issueId: '12345', assignedTo: 'username' });
+await monitoring.updateIssue(tokens, { issueId: '12345', status: 'ignored' });
+```
+
+---
+
+## Events
+
+Raw event records associated with an issue:
+
+```typescript lineNumbers
+const events = await monitoring.listEvents(tokens, {
+  orgSlug: 'my-company',
+  issueId: '12345',
+  limit: 50,
+});
+// events.items: MonitorEvent[]
+// event.id, event.eventId, event.title, event.platform, event.dateCreated, event.stacktrace
+```
+
+---
+
+## Releases
+
+Track software releases and associate them with errors:
+
+```typescript lineNumbers
+// Create a release
+await monitoring.createRelease(tokens, {
+  orgSlug: 'my-company',
+  version: 'v1.2.3',
+  projects: ['my-project'],
+  ref: 'abc123def456', // git commit SHA or branch
+  url: 'https://github.com/my-org/my-repo/releases/tag/v1.2.3',
+});
+
+// List releases
+const releases = await monitoring.listReleases(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  limit: 10,
+});
+```
+
+---
+
+## Performance vitals
+
+Query Web Vitals and transaction performance data:
+
+```typescript lineNumbers
+const vitals = await monitoring.listVitals(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  transaction: '/api/checkout',
+  field: ['p50(transaction.duration)', 'p95(transaction.duration)', 'count()'],
+  environment: 'production',
+});
+```
+
+---
+
+## Metrics
+
+Query custom metrics and span-based metrics:
+
+```typescript lineNumbers
+const metrics = await monitoring.listMetrics(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  mri: 'd:transactions/duration@millisecond',
+  field: ['avg(d:transactions/duration@millisecond)'],
+  interval: '1h',
+});
+```
+
+---
+
+## Alerts
+
+Manage issue alert rules:
+
+```typescript lineNumbers
+const alerts = await monitoring.listAlertRules(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+});
+// alert.id, alert.name, alert.conditions, alert.actions
+```
+
+---
+
+## Crons
+
+Monitor scheduled job execution with Sentry Crons:
+
+```typescript lineNumbers
+const monitors = await monitoring.listCronMonitors(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+});
+// monitor.id, monitor.name, monitor.status, monitor.nextCheckIn, monitor.lastCheckIn
+```
+
+---
+
+## Replays
+
+Access Session Replay recordings:
+
+```typescript lineNumbers
+const replays = await monitoring.listReplays(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  query: 'user.email:user@example.com',
+  limit: 20,
+});
+// replay.id, replay.urls, replay.duration, replay.errorCount, replay.user
+```
+
+---
+
+## Logs
+
+Query log entries:
+
+```typescript lineNumbers
+const logs = await monitoring.listLogs(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  query: 'level:error',
+  limit: 100,
+});
+```
+
+---
+
+## Teams & organizations
+
+```typescript lineNumbers
+// List organizations
+const orgs = await monitoring.listOrgs(tokens);
+
+// List teams in an org
+const teams = await monitoring.listTeams(tokens, { orgSlug: 'my-company' });
+
+// List projects in an org
+const projects = await monitoring.listProjects(tokens, { orgSlug: 'my-company' });
+```
+
+---
+
+## Tags
+
+```typescript lineNumbers
+const tags = await monitoring.listTags(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+});
+```
+
+---
+
+## Feedback
+
+Access user feedback submitted via Sentry's feedback widget:
+
+```typescript lineNumbers
+const feedback = await monitoring.listFeedback(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+});
+// feedback.items: MonitorFeedback[]
+```
+
+---
+
+## Webhook events
+
+Subscribe to normalized monitoring events with `hub.onEvent`:
+
+```typescript lineNumbers
+hub.onEvent('sentry', (event) => {
+  switch (event.eventType) {
+    case 'monitor.issue.created':
+    case 'monitor.issue.escalating':
+      // Page on-call
+      break;
+    case 'monitor.alert.triggered':
+    case 'monitor.alert.open':
+      // Fire notification
+      break;
+    case 'monitor.error.created':
+      // Log to analytics pipeline
+      break;
+  }
+});
+```
+
+See the [Sentry adapter](/docs/adapters/sentry#webhook-events) for the full event reference.

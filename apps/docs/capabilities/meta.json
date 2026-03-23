@@ -4,6 +4,7 @@
     "source-control",
     "messaging",
     "issue-tracking",
-    "app-store"
+    "app-store",
+    "monitoring"
   ]
 }

@@ -1,0 +1,314 @@
+---
+title: Sentry
+description: Sentry adapter — crash monitoring, performance vitals, alerts, replays, and more with static auth tokens or OAuth 2.0.
+---
+
+## Overview
+
+The Sentry adapter integrates with [Sentry](https://sentry.io) — the application monitoring platform for errors, performance, logs, replays, and alerts. It supports both **static auth tokens** and **OAuth 2.0**, HMAC-SHA256 webhook verification, and a comprehensive monitoring capability covering issues, events, releases, vitals, metrics, alerts, crons, replays, logs, feedback, teams, tags, and DSN management.
+
+**Capability:** [`monitoring`](/docs/capabilities/monitoring)
+
+**Auth model:** Static Bearer token (`sntrys_...`) **or** OAuth 2.0 (internal/public integrations)
+
+**Token lifetime:** Static tokens never expire; OAuth tokens expire in ~30 days
+
+<Callout type="info">
+Most integrations should use a **static auth token** (`authToken`). OAuth 2.0 (`clientId` + `clientSecret`) is only needed when you require per-user authorization through Sentry's internal/public integration flow.
+</Callout>
+
+---
+
+## Prerequisites
+
+### Static auth token (recommended)
+
+1. Go to [sentry.io](https://sentry.io) → **Settings → Account → API → Auth Tokens → Create New Token**
+2. Select the required scopes: `org:read`, `project:read`, `event:read`, `alerts:read`, `releases`
+3. Copy the generated token (starts with `sntrys_`)
+4. For webhooks: go to **Settings → Integrations → your integration → Webhooks** and note the **Signing Secret**
+
+### OAuth 2.0 (per-user authorization)
+
+1. Go to **Settings → Developer Settings → New Internal Integration** (or New Public Integration)
+2. Fill in **Name**, **Webhook URL**, and **Redirect URIs**
+3. Copy the **Client ID** and **Client Secret**
+4. Grant the required permission scopes
+
+---
+
+## Installation
+
+```bash title="Terminal"
+bun add @apollo-deploy/adapter-sentry
+```
+
+---
+
+## Configuration
+
+### Static auth token mode
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createSentryAdapter } from '@apollo-deploy/adapter-sentry';
+
+const sentry = createSentryAdapter({
+  authToken: process.env.SENTRY_AUTH_TOKEN!,
+  defaultOrgSlug: process.env.SENTRY_ORG_SLUG,
+  webhookSecret: process.env.SENTRY_WEBHOOK_SECRET,
+  // baseUrl: 'https://sentry.example.com', // self-hosted only
+});
+```
+
+### OAuth 2.0 mode
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { createSentryAdapter } from '@apollo-deploy/adapter-sentry';
+
+const sentry = createSentryAdapter({
+  clientId: process.env.SENTRY_CLIENT_ID!,
+  clientSecret: process.env.SENTRY_CLIENT_SECRET!,
+  defaultOrgSlug: process.env.SENTRY_ORG_SLUG,
+  webhookSecret: process.env.SENTRY_WEBHOOK_SECRET,
+});
+```
+
+### Configuration options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `authToken` | `string` | Static mode | Bearer token from Sentry → Settings → Auth Tokens (`sntrys_...`) |
+| `clientId` | `string` | OAuth mode | Client ID for Sentry internal/public integration |
+| `clientSecret` | `string` | OAuth mode | Client Secret for Sentry internal/public integration |
+| `defaultOrgSlug` | `string` | No | Default organization slug used when not provided to capability methods |
+| `webhookSecret` | `string` | No | HMAC-SHA256 signing secret for verifying inbound webhooks |
+| `baseUrl` | `string` | No | Base URL override for self-hosted Sentry (default: `https://sentry.io`) |
+
+---
+
+## Environment variables
+
+```bash title=".env"
+# Static token mode
+SENTRY_AUTH_TOKEN=sntrys_your_token_here
+SENTRY_ORG_SLUG=my-company
+SENTRY_WEBHOOK_SECRET=whsec_your_secret_at_least_32_chars
+
+# OAuth mode (instead of SENTRY_AUTH_TOKEN)
+# SENTRY_CLIENT_ID=abc123
+# SENTRY_CLIENT_SECRET=def456
+```
+
+---
+
+## Registering with the hub
+
+```typescript title="lib/integrations.ts" lineNumbers
+import { IntegrationHub } from '@apollo-deploy/integrations';
+import { createSentryAdapter } from '@apollo-deploy/adapter-sentry';
+
+const hub = new IntegrationHub();
+
+hub.register('sentry', createSentryAdapter({
+  authToken: process.env.SENTRY_AUTH_TOKEN!,
+  defaultOrgSlug: process.env.SENTRY_ORG_SLUG,
+  webhookSecret: process.env.SENTRY_WEBHOOK_SECRET,
+}));
+
+await hub.initialize();
+
+hub.onEvent('sentry', (event) => {
+  if (event.eventType === 'monitor.issue.created') {
+    console.log('New Sentry issue:', event.data);
+  }
+  if (event.eventType === 'monitor.alert.triggered') {
+    console.log('Alert triggered:', event.data);
+  }
+});
+```
+
+---
+
+## OAuth flow
+
+The OAuth flow is only applicable when using `clientId` + `clientSecret` (OAuth 2.0 mode). In static token mode, `getAuthorizationUrl` returns the Sentry auth token settings page directly.
+
+### Step 1 — Generate the authorization URL
+
+```typescript title="lib/sentry-oauth.ts" lineNumbers
+const adapter = hub.getAdapter('sentry');
+
+const url = adapter.oauth.getAuthorizationUrl({
+  state: crypto.randomUUID(), // Store in session for CSRF protection
+  redirectUri: 'https://yourapp.com/oauth/callback/sentry',
+});
+```
+
+### Step 2 — Exchange the code
+
+```typescript title="app/oauth/callback/sentry/route.ts" lineNumbers
+const tokens = await adapter.oauth.exchangeCode({
+  code: searchParams.get('code')!,
+  redirectUri: 'https://yourapp.com/oauth/callback/sentry',
+});
+
+// tokens.accessToken    — OAuth access token (~30 day expiry)
+// tokens.refreshToken   — refresh token
+// tokens.expiresAt      — expiry timestamp (prefers `expires_at` from response)
+```
+
+### Step 3 — Refresh tokens
+
+```typescript title="lib/sentry-refresh.ts" lineNumbers
+const refreshed = await adapter.oauth.refreshToken(tokens.refreshToken!);
+// Returns new TokenSet with updated accessToken and expiresAt
+```
+
+<Callout type="warn">
+Static auth tokens (`authToken` mode) **cannot** be refreshed. Calling `refreshToken` will throw a `TokenRefreshError` with `retryable: false`. Re-enter the token in your settings UI when it needs to be rotated.
+</Callout>
+
+---
+
+## Token lifecycle
+
+| Field | Value |
+|-------|-------|
+| `expiresInSeconds` | `2592000` (~30 days, OAuth only) |
+| `refreshable` | `true` (OAuth) / `false` (static) |
+| `rotatesRefreshToken` | `false` |
+| `requiresRefreshLock` | `false` |
+
+---
+
+## Webhook events
+
+Sentry signs payloads with **HMAC-SHA256** using the header `sentry-hook-signature: <hex digest>`.
+
+### Setting up webhooks in Sentry
+
+1. Go to **Settings → Integrations → your integration → Webhooks**
+2. Add your endpoint URL (e.g. `https://yourapp.com/webhooks/sentry`)
+3. Copy the **Signing Secret** → `SENTRY_WEBHOOK_SECRET`
+4. Select the event types to subscribe to
+
+```typescript title="app/webhooks/sentry/route.ts" lineNumbers
+import { NextRequest } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const rawBody = Buffer.from(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers.entries());
+
+  const result = await hub.webhooks.sentry({ rawBody, headers });
+  return Response.json({ ok: true }, { status: result.statusCode ?? 200 });
+}
+```
+
+### Supported events
+
+The adapter uses `sentry-hook-resource` + `action` from the body to normalize events:
+
+| Sentry resource + action | Normalized `eventType` | Description |
+|---|---|---|
+| `issue.created` | `monitor.issue.created` | New error issue opened |
+| `issue.resolved` | `monitor.issue.resolved` | Issue marked resolved |
+| `issue.assigned` | `monitor.issue.assigned` | Issue assigned to a user |
+| `issue.ignored` | `monitor.issue.ignored` | Issue ignored/muted |
+| `issue.unresolved` | `monitor.issue.unresolved` | Issue re-opened |
+| `issue.archived` | `monitor.issue.archived` | Issue archived |
+| `issue.escalating` | `monitor.issue.escalating` | Issue escalated |
+| `error.created` | `monitor.error.created` | Raw error event ingested |
+| `event_alert.triggered` | `monitor.alert.triggered` | Issue alert triggered |
+| `metric_alert.open` | `monitor.alert.open` | Metric alert opened |
+| `metric_alert.resolved` | `monitor.alert.resolved` | Metric alert resolved |
+| `metric_alert.warning` | `monitor.alert.warning` | Metric alert in warning state |
+| `comment.created` | `monitor.comment.created` | Comment added to issue |
+| `comment.updated` | `monitor.comment.updated` | Comment edited |
+| `comment.deleted` | `monitor.comment.deleted` | Comment deleted |
+| `installation.created` | `monitor.installation.created` | Integration installed |
+| `installation.deleted` | `monitor.installation.deleted` | Integration uninstalled |
+
+---
+
+## Monitoring capability
+
+Use `hub.getAdaptersByCapability('monitoring')` to get all monitoring adapters, or access Sentry directly via `hub.getAdapter('sentry').monitoring`.
+
+### Issues
+
+```typescript title="lib/sentry-issues.ts" lineNumbers
+const monitoring = hub.getAdapter('sentry').monitoring;
+
+// List issues
+const issues = await monitoring.listIssues(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+  query: 'is:unresolved',
+  limit: 25,
+});
+
+// Get a single issue
+const issue = await monitoring.getIssue(tokens, { issueId: '12345' });
+
+// Resolve an issue
+await monitoring.updateIssue(tokens, { issueId: '12345', status: 'resolved' });
+```
+
+### Events
+
+```typescript title="lib/sentry-events.ts" lineNumbers
+// List events for an issue
+const events = await monitoring.listEvents(tokens, {
+  orgSlug: 'my-company',
+  issueId: '12345',
+});
+```
+
+### Releases
+
+```typescript title="lib/sentry-releases.ts" lineNumbers
+// Create a release
+await monitoring.createRelease(tokens, {
+  orgSlug: 'my-company',
+  version: 'v1.2.3',
+  projects: ['my-project'],
+  ref: 'abc123def',
+});
+
+// List releases
+const releases = await monitoring.listReleases(tokens, { orgSlug: 'my-company' });
+```
+
+### Alerts
+
+```typescript title="lib/sentry-alerts.ts" lineNumbers
+// List alert rules
+const alerts = await monitoring.listAlertRules(tokens, {
+  orgSlug: 'my-company',
+  projectSlug: 'my-project',
+});
+```
+
+### Sentry-specific extras
+
+These methods are available on the `SentryMonitoringCapability` type:
+
+```typescript title="lib/sentry-extras.ts" lineNumbers
+import type { SentryMonitoringCapability } from '@apollo-deploy/adapter-sentry';
+
+const monitoring = hub.getAdapter('sentry').monitoring as SentryMonitoringCapability;
+
+// DSN management
+const keys = await monitoring.listDsnKeys(tokens, 'my-company', 'my-project');
+const key = await monitoring.createDsnKey(tokens, 'my-company', 'my-project', 'Production');
+
+// Ingestion statistics
+const stats = await monitoring.getStats(tokens, 'my-company', {
+  stat: 'received',
+  resolution: '1h',
+});
+
+// Debug information files
+const debugFiles = await monitoring.listDebugFiles(tokens, 'my-company', 'my-project');
+await monitoring.deleteDebugFile(tokens, 'my-company', 'my-project', 'file-id');
+```

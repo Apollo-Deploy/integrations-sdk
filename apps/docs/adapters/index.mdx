@@ -8,16 +8,17 @@ Each adapter wraps a specific provider's API behind a common interface. Adapters
 
 ## Feature matrix
 
-| Adapter | Package | OAuth | Webhooks | Source Control | Messaging | Issue Tracking | App Store |
-|---------|---------|:-----:|:--------:|:-:|:-:|:-:|:-:|
-| [GitHub](/docs/adapters/github) | `@apollo-deploy/adapter-github` | ✓ | ✓ | ✓ | | | |
-| [GitLab](/docs/adapters/gitlab) | `@apollo-deploy/adapter-gitlab` | ✓ | ✓ | ✓ | | ✓ | |
-| [Slack](/docs/adapters/slack) | `@apollo-deploy/adapter-slack` | ✓ | ✓ | | ✓ | | |
-| [Discord](/docs/adapters/discord) | `@apollo-deploy/adapter-discord` | ✓ | ✓ | | ✓ | | |
-| [Jira](/docs/adapters/jira) | `@apollo-deploy/adapter-jira` | ✓ | ✓ | | | ✓ | |
-| [Linear](/docs/adapters/linear) | `@apollo-deploy/adapter-linear` | ✓ | ✓ | | | ✓ | |
-| [Apple App Store Connect](/docs/adapters/apple) | `@apollo-deploy/adapter-apple` | ✓ (JWT) | ✓ | | | | ✓ |
-| [Google Play Console](/docs/adapters/google-play) | `@apollo-deploy/adapter-google-play` | ✓ | ✓ | | | | ✓ |
+| Adapter | Package | OAuth | Webhooks | Source Control | Messaging | Issue Tracking | App Store | Monitoring |
+|---------|---------|:-----:|:--------:|:-:|:-:|:-:|:-:|:-:|
+| [GitHub](/docs/adapters/github) | `@apollo-deploy/adapter-github` | ✓ | ✓ | ✓ | | | | |
+| [GitLab](/docs/adapters/gitlab) | `@apollo-deploy/adapter-gitlab` | ✓ | ✓ | ✓ | | ✓ | | |
+| [Slack](/docs/adapters/slack) | `@apollo-deploy/adapter-slack` | ✓ | ✓ | | ✓ | | | |
+| [Discord](/docs/adapters/discord) | `@apollo-deploy/adapter-discord` | ✓ | ✓ | | ✓ | | | |
+| [Jira](/docs/adapters/jira) | `@apollo-deploy/adapter-jira` | ✓ | ✓ | | | ✓ | | |
+| [Linear](/docs/adapters/linear) | `@apollo-deploy/adapter-linear` | ✓ | ✓ | | | ✓ | | |
+| [Apple App Store Connect](/docs/adapters/apple) | `@apollo-deploy/adapter-apple` | ✓ (JWT) | ✓ | | | | ✓ | |
+| [Google Play Console](/docs/adapters/google-play) | `@apollo-deploy/adapter-google-play` | ✓ | ✓ | | | | ✓ | |
+| [Sentry](/docs/adapters/sentry) | `@apollo-deploy/adapter-sentry` | ✓ | ✓ | | | | | ✓ |
 
 ---
 
@@ -33,6 +34,8 @@ Each adapter wraps a specific provider's API behind a common interface. Adapters
 | Linear | 24 hours | ✗ | ✗ | ✗ |
 | Apple | 20 min (JWT) | ✗ (regen) | ✗ | ✗ |
 | Google Play | 1 hour | ✓ | ✗ | ✗ |
+| Sentry (OAuth) | ~30 days | ✓ | ✗ | ✗ |
+| Sentry (static token) | Never | ✗ | ✗ | ✗ |
 
 <Callout type="warn">
 **Jira** is the only adapter with `rotatesRefreshToken: true` and `requiresRefreshLock: true`. You **must** wrap Jira token refreshes in a distributed lock and atomically swap both `accessToken` and `refreshToken` in your database.
@@ -52,6 +55,7 @@ Each adapter wraps a specific provider's API behind a common interface. Adapters
 | Linear | HMAC-SHA256 | `linear-signature: <hmac>` |
 | Apple | Signed JWT payload | `signedPayload` field in body |
 | Google Play | Pub/Sub message token | Pub/Sub envelope |
+| Sentry | HMAC-SHA256 | `sentry-hook-signature: <hex>` |
 
 ---
 

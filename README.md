@@ -1,6 +1,6 @@
 # Integrations SDK
 
-A unified TypeScript SDK for building third-party integrations across GitHub, Slack, Jira, Linear, GitLab, Discord, Apple App Store Connect, and Google Play Console. Define your integration logic once, connect everywhere.
+A unified TypeScript SDK for building third-party integrations across GitHub, Slack, Jira, Linear, GitLab, Discord, Apple App Store Connect, Google Play Console, and Sentry. Define your integration logic once, connect everywhere.
 
 ## Installation
 
@@ -14,6 +14,12 @@ Install adapters for your platforms:
 
 ```bash
 bun add @apollo-deploy/adapter-github @apollo-deploy/adapter-slack @apollo-deploy/adapter-jira
+```
+
+Install the Sentry adapter:
+
+```bash
+bun add @apollo-deploy/adapter-sentry
 ```
 
 ## Usage
@@ -66,6 +72,7 @@ await hub.initialize();
 | Linear | `@apollo-deploy/adapter-linear` | Issue Tracking | Yes | Yes |
 | Apple App Store Connect | `@apollo-deploy/adapter-apple` | App Store | JWT | Yes |
 | Google Play Console | `@apollo-deploy/adapter-google-play` | App Store | JWT | Yes |
+| Sentry | `@apollo-deploy/adapter-sentry` | Monitoring | Yes / Static Token | Yes |
 
 ## Features
 
@@ -109,6 +116,15 @@ const apple = hub.getAdaptersByCapability('app-store');
 // reviews & ratings, beta testing, app vitals & crash clusters
 ```
 
+### Monitoring
+
+```typescript
+const sentry = hub.getAdaptersByCapability('monitoring');
+// listIssues, getIssue, updateIssue, listEvents, createRelease, listReleases,
+// listVitals, listMetrics, listAlertRules, listCronMonitors, listReplays,
+// listLogs, listFeedback, listOrgs, listTeams, listProjects, listTags
+```
+
 ## Packages
 
 | Package | Description |
@@ -122,6 +138,7 @@ const apple = hub.getAdaptersByCapability('app-store');
 | `@apollo-deploy/adapter-linear` | Linear adapter (issue tracking) |
 | `@apollo-deploy/adapter-apple` | Apple App Store Connect adapter |
 | `@apollo-deploy/adapter-google-play` | Google Play Console adapter |
+| `@apollo-deploy/adapter-sentry` | Sentry adapter (monitoring) |
 
 ## Creating a Custom Adapter
 
