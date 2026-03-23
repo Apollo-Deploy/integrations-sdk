@@ -1,5 +1,12 @@
 # @apollo-deploy/integrations
 
+## 1.5.2
+
+### Patch Changes
+
+- d64e481: Chore: Bump Versions
+- 8ae0c88: docs: add Sentry adapter docs, monitoring capability, and package READMEs
+
 ## 1.5.1
 
 ### Patch Changes
