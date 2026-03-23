@@ -27,8 +27,8 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
     category: "Monitoring",
     dateAdded: "2026-03-20",
     iconUrl: {
-      light: "https://static.apollodeploy.com/icons/sentry-light.png",
-      dark: "https://static.apollodeploy.com/icons/sentry-dark.png",
+      light: "https://cdn.apollodeploy.com/integrations/sentry_integration_light.svg",
+      dark: "https://cdn.apollodeploy.com/integrations/sentry_integration_dark.svg",
     },
     websiteUrl: "https://sentry.io",
     docsUrl: "https://docs.sentry.io/api/",

@@ -13,6 +13,10 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
       "Connect GitLab projects for source control, merge requests, and issue tracking.",
     category: "Source Control",
     dateAdded: "2024-02-01",
+    iconUrl: {
+      light: "https://cdn.apollodeploy.com/integrations/gitlab_integration_light.svg",
+      dark: "https://cdn.apollodeploy.com/integrations/gitlab_integration_dark.svg",
+    },
     websiteUrl: "https://gitlab.com",
     docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html",
     auth: { type: "oauth" },
