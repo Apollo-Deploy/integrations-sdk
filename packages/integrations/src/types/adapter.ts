@@ -38,7 +38,7 @@ export interface AdapterContext {
   emitEvent: (event: IntegrationEvent) => Promise<void>;
 }
 
-// ─── Auth Method & Setup Flow ────────────────────────────────────────────────
+// ─── Auth Type & Setup Flow ────────────────────────────────────────────────
 
 /**
  * Authentication type the adapter uses.
@@ -48,11 +48,6 @@ export interface AdapterContext {
  * - `none`             — No credentials required (public / unauthenticated APIs).
  */
 export type AuthType = "oauth" | "credential_form" | "none";
-
-/**
- * @deprecated Use `AuthType` instead.
- */
-export type AuthMethod = AuthType;
 
 /**
  * A single credential field the connect UI must render.
@@ -196,7 +191,7 @@ export interface AdapterMetadata {
 
   /**
    * Authentication method and credential input specification for this integration.
-   * When omitted the hub defaults to `{ method: 'oauth2' }` at runtime,
+   * When omitted the hub defaults to `{ type: 'oauth' }` at runtime,
    * since all current adapters implement the OAuth handler interface.
    */
   auth?: AdapterAuthConfig;
