@@ -11,14 +11,16 @@ name: Auto Changeset
 #     Minimum required scopes: repo (or contents: write for fine-grained PATs).
 #
 # Conventional commit → bump mapping:
-#   feat!: / BREAKING CHANGE  → major
-#   feat:                     → minor
+#   <type>!: / BREAKING CHANGE → major
+#   feat:                      → minor
 #   fix: / perf: / refactor:
-#   / docs: / chore: / etc.   → patch
+#   / docs: / chore: / ci:
+#   / test: / style: / etc.    → patch
 #
-# Commits that start with "chore: version packages" (release.yml) or
-# "chore: add auto-generated changeset" (this workflow) are skipped to
-# prevent infinite loops.
+# Skipped commits:
+#   - "chore: version packages"              (release.yml)
+#   - "chore: add auto-generated changeset"  (this workflow)
+#   - Merge commits (e.g. "Merge pull request #123")
 
 on:
   push:
@@ -34,10 +36,11 @@ jobs:
     name: Generate changeset from commit
     runs-on: ubuntu-latest
 
-    # Skip commits produced by this workflow or by the release workflow.
+    # Skip commits produced by this workflow, the release workflow, or merge commits.
     if: |
       !startsWith(github.event.head_commit.message, 'chore: version packages') &&
-      !startsWith(github.event.head_commit.message, 'chore: add auto-generated changeset')
+      !startsWith(github.event.head_commit.message, 'chore: add auto-generated changeset') &&
+      !startsWith(github.event.head_commit.message, 'Merge ')
 
     permissions:
       contents: write
@@ -57,13 +60,15 @@ jobs:
         id: detect
         shell: bash
         run: |
-          # Read full commit message (handles multi-line bodies)
+          set -euo pipefail
+
           COMMIT_MSG="$(git log -1 --pretty=%B)"
           COMMIT_SUBJECT="$(git log -1 --pretty=%s)"
           echo "Subject : $COMMIT_SUBJECT"
 
           # ── Bump type from conventional commit prefix ──────────────────────
-          if echo "$COMMIT_MSG" | grep -qE '^(feat|fix|refactor|perf|chore|build)(\(.+\))?!|^BREAKING[ -]CHANGE'; then
+          # Any conventional type with `!` or a BREAKING CHANGE footer → major
+          if echo "$COMMIT_MSG" | grep -qE '^[a-z]+(\(.+\))?!:|^BREAKING[ -]CHANGE'; then
             BUMP="major"
           elif echo "$COMMIT_MSG" | grep -qE '^feat(\(.+\))?:'; then
             BUMP="minor"
@@ -78,37 +83,33 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Skip commits that only touch changeset/changelog artifacts to avoid
-          # PR loops. package.json is intentionally NOT excluded here — dep
-          # updates and other legitimate package.json changes must still trigger
-          # a changeset. The job-level `if` already blocks "chore: version
-          # packages" commits (the only case where package.json bumps loop).
-          NON_RELEASE_CHANGES="$(echo "$CHANGED" | grep -Ev '^(\.changeset/|packages/[^/]+/CHANGELOG\.md$|bun\.lock$)$' || true)"
+          # Filter out release/versioning artifacts. package.json is intentionally
+          # NOT excluded — dep updates and other legitimate changes must still
+          # trigger a changeset. The job-level `if` already blocks the
+          # "chore: version packages" commits that would otherwise loop.
+          NON_RELEASE_CHANGES="$(echo "$CHANGED" | grep -Ev '^\.changeset/|/CHANGELOG\.md$|^bun\.lock$' || true)"
           if [ -z "$NON_RELEASE_CHANGES" ]; then
             echo "Only release/versioning files changed — skipping changeset creation."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # ── Dynamically discover packages and check for changes ────────────
           FRONTMATTER=""
+          for pkg_json in packages/*/package.json; do
+            pkg_dir="$(dirname "$pkg_json")"
+            pkg_name="$(jq -r '.name' "$pkg_json")"
 
-          # Helper: append to FRONTMATTER if any changed file is under $prefix
-          check_pkg() {
-            local prefix="$1" name="$2"
-            if echo "$NON_RELEASE_CHANGES" | grep -q "^${prefix}"; then
-              FRONTMATTER="${FRONTMATTER}\"${name}\": ${BUMP}"$'\n'
+            # Skip private packages — they are not published to npm.
+            is_private="$(jq -r '.private // false' "$pkg_json")"
+            if [ "$is_private" = "true" ]; then
+              continue
             fi
-          }
 
-          check_pkg "packages/integrations/"        "@apollo-deploy/integrations"
-          check_pkg "packages/adapter-apple/"       "@apollo-deploy/adapter-apple"
-          check_pkg "packages/adapter-discord/"     "@apollo-deploy/adapter-discord"
-          check_pkg "packages/adapter-github/"      "@apollo-deploy/adapter-github"
-          check_pkg "packages/adapter-gitlab/"      "@apollo-deploy/adapter-gitlab"
-          check_pkg "packages/adapter-google-play/" "@apollo-deploy/adapter-google-play"
-          check_pkg "packages/adapter-jira/"        "@apollo-deploy/adapter-jira"
-          check_pkg "packages/adapter-linear/"      "@apollo-deploy/adapter-linear"
-          check_pkg "packages/adapter-slack/"       "@apollo-deploy/adapter-slack"
+            if echo "$NON_RELEASE_CHANGES" | grep -q "^${pkg_dir}/"; then
+              FRONTMATTER="${FRONTMATTER}\"${pkg_name}\": ${BUMP}"$'\n'
+            fi
+          done
 
           if [ -z "$FRONTMATTER" ]; then
             echo "No package source changes detected — skipping changeset creation."
@@ -126,8 +127,18 @@ jobs:
         if: steps.detect.outputs.skip != 'true'
         shell: bash
         run: |
+          set -euo pipefail
+
           HASH="$(git rev-parse --short HEAD)"
           FILE=".changeset/auto-${HASH}.md"
+
+          # Guard against duplicate changeset for the same commit SHA.
+          if [ -f "$FILE" ]; then
+            echo "Changeset $FILE already exists — skipping."
+            echo "CHANGESET_SKIP=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           DESCRIPTION="$(git log -1 --pretty=%s)"
 
           {
@@ -143,8 +154,11 @@ jobs:
       # ── Step 3: Commit and push the changeset file ───────────────────────────
 
       - name: Commit and push changeset
-        if: steps.detect.outputs.skip != 'true'
+        if: steps.detect.outputs.skip != 'true' && env.CHANGESET_SKIP != 'true'
+        shell: bash
         run: |
+          set -euo pipefail
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -157,4 +171,7 @@ jobs:
           fi
 
           git commit -m "chore: add auto-generated changeset"
+
+          # Rebase on top of any concurrent pushes before pushing.
+          git pull --rebase origin main
           git push
