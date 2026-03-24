@@ -10,6 +10,7 @@ import { createGooglePlayVitals } from "./vitals.js";
 import { createGooglePlayRecovery } from "./recovery.js";
 import { createGooglePlayPhasedReleases } from "./phased-releases.js";
 import { createGooglePlayGeneratedArtifacts } from "./generated-artifacts.js";
+import { createGooglePlayInstalls } from "./installs.js";
 
 export function createGooglePlayAppStore(
   config: GooglePlayAdapterConfig,
@@ -26,5 +27,6 @@ export function createGooglePlayAppStore(
     ...createGooglePlayRecovery(ctx),
     ...createGooglePlayPhasedReleases(ctx),
     ...createGooglePlayGeneratedArtifacts(ctx),
+    ...createGooglePlayInstalls(ctx),
   };
 }

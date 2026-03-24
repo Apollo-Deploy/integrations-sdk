@@ -45,6 +45,8 @@ import type {
   GeneratedArtifactsResult,
   GeneratedArtifactsListOpts,
   BuildDeliverablesResult,
+  InstallStats,
+  InstallStatsOpts,
 } from "../models/index.js";
 
 export interface AppStoreCapability {
@@ -531,4 +533,28 @@ export interface AppStoreCapability {
     appId: string,
     buildId: string,
   ): Promise<BuildDeliverablesResult>;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 14. INSTALL / ACTIVE USER COUNT
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch installed/active user count for an app.
+   *
+   * Apple: Uses the App Store Connect Analytics Reports API
+   *        (`APP_USAGE` / `SUMMARY` / `DAILY`, `ONGOING` access type).
+   *        On the first call for an app, creates the report subscription;
+   *        report instances become available within 24 hours.
+   *        Returns the most recent available daily data point.
+   *
+   * Google Play: Downloads the monthly install-stats overview CSV from the
+   *        developer's Cloud Storage bucket
+   *        (`gs://pubsite_prod_rev_{developerAccountId}/stats/installs/`).
+   *        Requires `developerAccountId` in the adapter config.
+   */
+  getInstallStats(
+    tokens: TokenSet,
+    appId: string,
+    opts?: InstallStatsOpts,
+  ): Promise<InstallStats>;
 }

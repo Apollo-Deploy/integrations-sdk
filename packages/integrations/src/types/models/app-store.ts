@@ -766,3 +766,60 @@ export interface GeneratedArtifactsListOpts {
   /** Google Play: version code. Apple: build ID. */
   versionCode: string;
 }
+
+// ── Install / Active User Stats ───────────────────────────────────────────────
+
+/**
+ * Install and active-user statistics for an app.
+ *
+ * Apple: Sourced from the App Store Connect Analytics Reports API
+ *        (APP_USAGE / SUMMARY / DAILY). `reportedAt` is the date of the
+ *        most recent available daily report segment.
+ *
+ * Google Play: Sourced from the monthly install-stats overview CSV exported
+ *        to the developer's Cloud Storage bucket
+ *        (`gs://pubsite_prod_rev_{developerAccountId}/stats/installs/`).
+ *        `reportedAt` is the date of the most recent row in that file.
+ */
+export interface InstallStats {
+  appId: string;
+  platform: "ios" | "android";
+  /** Date of the most recent data point returned. */
+  reportedAt: Date;
+  /**
+   * Number of devices that currently have the app installed and active.
+   *
+   * Apple: 30-day active devices (users who opened the app in the last 30 days).
+   * Google Play: `Active Device Installs` from the GCS installs overview CSV.
+   */
+  activeDeviceInstalls: number;
+  /**
+   * Cumulative total installations across all time.
+   *
+   * Apple: Sum of the `Total Downloads` column from the most recent report.
+   * Google Play: `Total User Installs` from the GCS installs overview CSV.
+   */
+  totalInstalls: number;
+  /**
+   * New installs on the most recent reported day.
+   * Apple: `Installations` column. Google Play: `Daily Device Installs`.
+   */
+  dailyInstalls?: number;
+  /**
+   * Uninstalls on the most recent reported day.
+   * Apple: `Deletions` column. Google Play: `Daily Device Uninstalls`.
+   */
+  dailyUninstalls?: number;
+}
+
+export interface InstallStatsOpts {
+  /**
+   * Month to query in `YYYY-MM` format (e.g. `"2025-03"`).
+   * Defaults to the current calendar month.
+   *
+   * Google Play: Selects the GCS install-stats file for that month.
+   * Apple: Ignored — the Analytics Reports API returns the most recent
+   *        available daily report regardless of this option.
+   */
+  reportMonth?: string;
+}

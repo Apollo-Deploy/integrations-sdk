@@ -10,6 +10,7 @@ import { createAppleVitals } from "./vitals.js";
 import { createAppleRecovery } from "./recovery.js";
 import { createApplePhasedReleases } from "./phased-releases.js";
 import { createAppleGeneratedArtifacts } from "./generated-artifacts.js";
+import { createAppleInstalls } from "./installs.js";
 
 export function createAppleAppStore(
   config: AppleAdapterConfig,
@@ -26,5 +27,6 @@ export function createAppleAppStore(
     ...createAppleRecovery(),
     ...createApplePhasedReleases(ctx),
     ...createAppleGeneratedArtifacts(ctx),
+    ...createAppleInstalls(ctx),
   };
 }

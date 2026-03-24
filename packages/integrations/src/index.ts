@@ -190,6 +190,9 @@ export type {
   BuildDeliverable,
   BuildDeliverablesResult,
   GeneratedArtifactsListOpts,
+  // Install / active user stats
+  InstallStats,
+  InstallStatsOpts,
   // Monitoring models
   MonitoringOrganization,
   MonitoringProject,
