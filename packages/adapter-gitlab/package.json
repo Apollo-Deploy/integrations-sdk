@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-gitlab",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "GitLab adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "^1.5.2",
+    "@apollo-deploy/integrations": "^1.5.3",
     "@gitbeaker/rest": "^40.0.0"
   },
   "devDependencies": {

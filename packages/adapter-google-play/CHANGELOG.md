@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.4.5
+
+### Patch Changes
+
+- ac32858: Merge pull request #10 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [ac32858]
+  - @apollo-deploy/integrations@1.5.3
+
 ## 1.4.4
 
 ### Patch Changes
