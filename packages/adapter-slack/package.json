@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-slack",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "Slack adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "^1.5.3"
+    "@apollo-deploy/integrations": "^1.5.4"
   },
   "devDependencies": {
     "@types/bun": "latest",
