@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import crypto from "node:crypto";
-import { generateGoogleJWT } from "../src/oauth";
+import { generateGoogleJWT, GCS_SCOPE } from "../src/oauth";
 import type { ServiceAccountCredentials } from "../src/types";
 
 function generateTestRSAKeyPair() {
@@ -87,6 +87,22 @@ describe("generateGoogleJWT", () => {
     const verify = crypto.createVerify("RSA-SHA256");
     verify.update(signingInput);
     expect(verify.verify(publicKey, sigBuf)).toBe(true);
+  });
+
+  test("uses androidpublisher scope by default", () => {
+    const { privateKey } = generateTestRSAKeyPair();
+    const jwt = generateGoogleJWT(makeCreds(privateKey));
+    const [, payloadPart] = jwt.split(".");
+    const payload = base64urlDecode(payloadPart) as Record<string, unknown>;
+    expect(payload.scope).toBe("https://www.googleapis.com/auth/androidpublisher");
+  });
+
+  test("respects a custom scope argument", () => {
+    const { privateKey } = generateTestRSAKeyPair();
+    const jwt = generateGoogleJWT(makeCreds(privateKey), GCS_SCOPE);
+    const [, payloadPart] = jwt.split(".");
+    const payload = base64urlDecode(payloadPart) as Record<string, unknown>;
+    expect(payload.scope).toBe(GCS_SCOPE);
   });
 
   test("different client emails produce different JWTs", () => {

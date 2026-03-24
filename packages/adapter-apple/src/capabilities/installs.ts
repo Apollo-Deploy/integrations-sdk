@@ -41,12 +41,21 @@ interface AnalyticsReportSegment {
   };
 }
 
-// ── TSV column names used by APP_USAGE / SUMMARY ──────────────────────────────
+// ── TSV column names ──────────────────────────────────────────────────────────
 
+// APP_USAGE / SUMMARY report (aggregated, one row per day)
 const COL_ACTIVE_DEVICES = "Active Devices";
 const COL_TOTAL_DOWNLOADS = "Total Downloads";
 const COL_INSTALLATIONS = "Installations";
 const COL_DELETIONS = "Deletions";
+
+// APP_INSTALLS (detailed installs) report (event-level rows with dimensions)
+// Reference: https://developer.apple.com/documentation/analytics-reports/app-installs
+const COL_APP_VERSION = "App Version";
+const COL_EVENT = "Event";
+const COL_COUNTS = "Counts";
+const EVENT_INSTALL = "Install";
+const EVENT_DELETE = "Delete";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,8 +65,10 @@ const COL_DELETIONS = "Deletions";
  * all modern edge runtimes.
  */
 async function decompressGzip(response: Response): Promise<string> {
+  const body = response.body;
+  if (body == null) return "";
   const ds = new DecompressionStream("gzip");
-  const decompressedStream = response.body!.pipeThrough(ds);
+  const decompressedStream = body.pipeThrough(ds);
   return new Response(decompressedStream).text();
 }
 
@@ -67,7 +78,7 @@ async function decompressGzip(response: Response): Promise<string> {
 function parseTsv(tsv: string): Record<string, string>[] {
   const lines = tsv.split("\n").filter((l) => l.trim() !== "");
   if (lines.length < 2) return [];
-  const headers = lines[0]!.split("\t");
+  const headers = lines[0].split("\t");
   return lines.slice(1).map((line) => {
     const cells = line.split("\t");
     const row: Record<string, string> = {};
@@ -91,9 +102,11 @@ export function createAppleInstalls(
     async getInstallStats(
       tokens,
       appId,
-      _opts?: InstallStatsOpts,
+      opts?: InstallStatsOpts,
     ): Promise<InstallStats> {
-      // 1. Find or create an ONGOING APP_USAGE report request for this app.
+      const appVersionCode = opts?.appVersionCode;
+
+      // 1. Find or create an ONGOING report request for this app.
       const existingRequests = await ctx.appleRequest<
         AppleListResponse<AnalyticsReportRequest>
       >(
@@ -107,9 +120,8 @@ export function createAppleInstalls(
         existingRequests.data != null &&
         existingRequests.data.length > 0
       ) {
-        requestId = existingRequests.data[0]!.id;
+        requestId = existingRequests.data[0].id;
       } else {
-        // Create a new ONGOING APP_USAGE SUMMARY report subscription.
         const created = await ctx.appleRequest<{ data: AnalyticsReportRequest }>(
           tokens,
           `/apps/${appId}/analyticsReportRequests`,
@@ -128,16 +140,19 @@ export function createAppleInstalls(
         requestId = created.data.id;
       }
 
-      // 2. List available APP_USAGE / SUMMARY / DAILY reports for this request.
+      // 2. Fetch the appropriate report type.
+      //    - Default: APP_USAGE / SUMMARY / DAILY (aggregated metrics per day)
+      //    - With appVersionCode: APP_INSTALLS / STANDARD / DAILY (event-level
+      //      rows with App Version dimension)
+      const reportFilter = appVersionCode != null
+        ? `?filter[reportType]=APP_INSTALLS&filter[reportSubType]=STANDARD&filter[frequency]=DAILY&limit=1`
+        : `?filter[reportType]=APP_USAGE&filter[reportSubType]=SUMMARY&filter[frequency]=DAILY&limit=1`;
+
       const reports = await ctx.appleRequest<
         AppleListResponse<AnalyticsReport>
       >(
         tokens,
-        `/analyticsReportRequests/${requestId}/reports` +
-          `?filter[reportType]=APP_USAGE` +
-          `&filter[reportSubType]=SUMMARY` +
-          `&filter[frequency]=DAILY` +
-          `&limit=1`,
+        `/analyticsReportRequests/${requestId}/reports${reportFilter}`,
       );
 
       if (reports.data == null || reports.data.length === 0) {
@@ -149,7 +164,7 @@ export function createAppleInstalls(
         );
       }
 
-      const reportId = reports.data[0]!.id;
+      const reportId = reports.data[0].id;
 
       // 3. Get the most recent report instance (sorted desc by processing date).
       const instances = await ctx.appleRequest<
@@ -169,7 +184,7 @@ export function createAppleInstalls(
         );
       }
 
-      const instance = instances.data[0]!;
+      const instance = instances.data[0];
       const instanceId = instance.id;
       const reportedAt = new Date(instance.attributes.processingDate);
 
@@ -190,7 +205,7 @@ export function createAppleInstalls(
         );
       }
 
-      const segmentUrl = segments.data[0]!.attributes.url;
+      const segmentUrl = segments.data[0].attributes.url;
 
       // 5. Download the gzipped TSV segment using the signed URL directly
       //    (no Authorization header — the URL is pre-signed by Apple).
@@ -222,6 +237,36 @@ export function createAppleInstalls(
       const tsv = await decompressGzip(downloadRes);
       const rows = parseTsv(tsv);
 
+      // 7. Build the result based on the report type used.
+      if (appVersionCode != null) {
+        // APP_INSTALLS report: event-level rows with App Version, Event, and Counts columns.
+        const versionRows = rows.filter(
+          (r) => r[COL_APP_VERSION] === appVersionCode,
+        );
+        if (versionRows.length === 0) {
+          throw new CapabilityError(
+            "apple",
+            `No install statistics found for app version "${appVersionCode}". ` +
+              "Check that this version has been released and has had activity.",
+            false,
+          );
+        }
+
+        const installRows = versionRows.filter((r) => r[COL_EVENT] === EVENT_INSTALL);
+        const deleteRows = versionRows.filter((r) => r[COL_EVENT] === EVENT_DELETE);
+
+        return {
+          appId,
+          platform: "ios",
+          reportedAt,
+          activeDeviceInstalls: 0, // Not available in the detailed installs report
+          totalInstalls: Math.round(sumColumn(installRows, COL_COUNTS)),
+          dailyInstalls: Math.round(sumColumn(installRows, COL_COUNTS)),
+          dailyUninstalls: Math.round(sumColumn(deleteRows, COL_COUNTS)),
+        };
+      }
+
+      // APP_USAGE / SUMMARY report: aggregated metric columns per day.
       const activeDeviceInstalls = sumColumn(rows, COL_ACTIVE_DEVICES);
       const totalInstalls = sumColumn(rows, COL_TOTAL_DOWNLOADS);
       const dailyInstalls = sumColumn(rows, COL_INSTALLATIONS);

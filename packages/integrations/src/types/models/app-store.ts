@@ -822,4 +822,17 @@ export interface InstallStatsOpts {
    *        available daily report regardless of this option.
    */
   reportMonth?: string;
+
+  /**
+   * Filter install statistics for a specific app version.
+   *
+   * Google Play: When provided, fetches the `_app_version.csv` dimension file
+   *        instead of `_overview.csv` and returns stats for the matching
+   *        `App Version Code` rows only. If the version is not found in the
+   *        report, a `CapabilityError` is thrown.
+   * Apple: Filters the `APP_USAGE` / `SUMMARY` / `DAILY` report rows by
+   *        `App Version`. If the version is not found, a `CapabilityError`
+   *        is thrown.
+   */
+  appVersionCode?: string;
 }
