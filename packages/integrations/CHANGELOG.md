@@ -1,5 +1,15 @@
 # @apollo-deploy/integrations
 
+## 1.6.0
+
+### Minor Changes
+
+- 3796a94: feat(apple): add per-version install stats via APP_INSTALLS report
+
+### Patch Changes
+
+- b8ea15f: Merge pull request #13 from Apollo-Deploy/changeset-release/main
+
 ## 1.5.5
 
 ### Patch Changes

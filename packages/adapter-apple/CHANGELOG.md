@@ -1,5 +1,18 @@
 # @apollo-deploy/adapter-apple
 
+## 1.5.0
+
+### Minor Changes
+
+- 3796a94: feat(apple): add per-version install stats via APP_INSTALLS report
+
+### Patch Changes
+
+- b8ea15f: Merge pull request #13 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [3796a94]
+- Updated dependencies [b8ea15f]
+  - @apollo-deploy/integrations@1.6.0
+
 ## 1.4.7
 
 ### Patch Changes
