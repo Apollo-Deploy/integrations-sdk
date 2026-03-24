@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-jira
 
+## 1.3.6
+
+### Patch Changes
+
+- b8ea15f: Merge pull request #13 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [b8ea15f]
+  - @apollo-deploy/integrations@1.5.6
+
 ## 1.3.5
 
 ### Patch Changes
