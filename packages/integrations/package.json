@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/integrations",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Core adapter-based integration hub for Apollo Deploy",
   "type": "module",
   "main": "dist/index.js",

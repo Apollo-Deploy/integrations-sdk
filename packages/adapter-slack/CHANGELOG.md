@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-slack
 
+## 1.2.10
+
+### Patch Changes
+
+- 36f80a9: Merge pull request #12 from Apollo-Deploy/changeset-release/main
+- Updated dependencies [36f80a9]
+  - @apollo-deploy/integrations@1.5.5
+
 ## 1.2.9
 
 ### Patch Changes
