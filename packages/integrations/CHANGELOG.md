@@ -1,5 +1,11 @@
 # @apollo-deploy/integrations
 
+## 1.5.6
+
+### Patch Changes
+
+- b8ea15f: Merge pull request #13 from Apollo-Deploy/changeset-release/main
+
 ## 1.5.5
 
 ### Patch Changes
