@@ -10,4 +10,4 @@
 "@apollo-deploy/adapter-slack": patch
 ---
 
-Merge pull request #11 from Apollo-Deploy/changeset-release/main
+Merge pull request #13 from Apollo-Deploy/changeset-release/main
