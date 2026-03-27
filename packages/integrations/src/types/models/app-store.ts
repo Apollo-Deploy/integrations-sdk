@@ -827,7 +827,7 @@ export interface InstallStatsOpts {
    * Filter install statistics for a specific app version.
    *
    * Google Play: When provided, fetches the `_app_version.csv` dimension file
-   *        instead of `_overview.csv` and returns stats for the matching
+    *        instead of the aggregate installs file and returns stats for the matching
    *        `App Version Code` rows only. If the version is not found in the
    *        report, a `CapabilityError` is thrown.
    * Apple: Filters the `APP_USAGE` / `SUMMARY` / `DAILY` report rows by
@@ -835,4 +835,26 @@ export interface InstallStatsOpts {
    *        is thrown.
    */
   appVersionCode?: string;
+
+  /**
+   * Google Play only. Selects which breakdown dimension CSV file to download.
+   *
+    * When omitted, Google Play uses the aggregate installs file with no
+    * dimension suffix.
+   *
+    * The aggregate file path format is:
+    *   `installs_{package}_{yyyyMM}.csv`
+   *
+   * | Value        | File suffix          | Rows broken down by          |
+   * |--------------|----------------------|------------------------------|
+    * | `app_version`| `_app_version.csv`   | App Version Code             |
+   * | `carrier`    | `_carrier.csv`       | Mobile carrier               |
+   * | `country`    | `_country.csv`       | Country                      |
+   * | `device`     | `_device.csv`        | Device model                 |
+   * | `language`   | `_language.csv`      | User language                |
+   * | `os_version` | `_os_version.csv`    | Android OS version           |
+   *
+   * When `appVersionCode` is also set, this is automatically set to `app_version`.
+   */
+  dimension?: "app_version" | "carrier" | "country" | "device" | "language" | "os_version";
 }

@@ -13,7 +13,6 @@ import type {
 import { CapabilityError } from "@apollo-deploy/integrations";
 import { mapGoogleReview, mapGoogleRatingSummary } from "../mappers/models.js";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
 
 export function createGooglePlayReviews(
   ctx: GooglePlayContext,
@@ -28,52 +27,53 @@ export function createGooglePlayReviews(
 > {
   const capability: ReturnType<typeof createGooglePlayReviews> = {
     async listReviews(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       opts?: ReviewListOpts,
     ): Promise<Paginated<StoreReview>> {
-      const params = new URLSearchParams({
-        maxResults: String(opts?.limit ?? 20),
-      });
-      if (opts?.cursor) params.set("token", opts.cursor);
-
-      const data = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/reviews?${params}`,
+      const data = await ctx.publisherRequest(
+        ctx.client.reviews.list({
+          packageName,
+          maxResults: opts?.limit ?? 20,
+          ...(opts?.cursor ? { token: opts.cursor } : {}),
+        }),
       );
 
       return {
-        items: (data?.reviews ?? []).map(mapGoogleReview),
+        items: (data?.reviews ?? []).map((r: Record<string, any>) => mapGoogleReview(r, packageName)),
         hasMore: !!data?.tokenPagination?.nextPageToken,
-        cursor: data?.tokenPagination?.nextPageToken,
+        cursor: data?.tokenPagination?.nextPageToken ?? undefined,
       };
     },
 
     async getReview(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       reviewId: string,
     ): Promise<StoreReview> {
-      const data = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/reviews/${reviewId}`,
+      const data = await ctx.publisherRequest(
+        ctx.client.reviews.get({ packageName, reviewId }),
       );
-      return { ...mapGoogleReview(data), appId: packageName };
+      return mapGoogleReview(data, packageName);
     },
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async replyToReview(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       reviewId: string,
       body: string,
     ): Promise<StoreReviewReply> {
-      const data = await ctx.gpRequest<{
+      const data = await ctx.publisherRequest<{
         result: { replyText: string; lastEdited: { seconds: string } };
       }>(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/reviews/${reviewId}:reply`,
-        { method: "POST", body: JSON.stringify({ replyText: body }) },
+        ctx.client.reviews.reply({
+          packageName,
+          reviewId,
+          requestBody: { replyText: body },
+        }) as Promise<{
+          data: { result: { replyText: string; lastEdited: { seconds: string } } };
+        }>,
       );
       return {
         body: data.result?.replyText ?? body,
@@ -96,14 +96,13 @@ export function createGooglePlayReviews(
     },
 
     async getRatingSummary(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       _opts?: RatingSummaryOpts,
     ): Promise<RatingSummary> {
-      const data = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/reviews?maxResults=1`,
-      );
+      const data = (await ctx.publisherRequest(
+        ctx.client.reviews.list({ packageName, maxResults: 1 }),
+      )) as Record<string, any>;
       return mapGoogleRatingSummary(
         packageName,
         data?.averageRating ? data : {},

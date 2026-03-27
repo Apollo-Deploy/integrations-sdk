@@ -3,18 +3,11 @@ import type {
   InstallStats,
   InstallStatsOpts,
 } from "@apollo-deploy/integrations";
+import { Storage } from "@google-cloud/storage";
 import { CapabilityError } from "@apollo-deploy/integrations";
 import type { GooglePlayContext } from "./_context.js";
-import { mintGcsAccessToken } from "../oauth.js";
 
 // ── GCS bucket / path helpers ─────────────────────────────────────────────────
-
-const GCS_API = "https://storage.googleapis.com/storage/v1";
-
-/** Encode an object path for the GCS JSON API (slashes become %2F). */
-function encodeGcsPath(path: string): string {
-  return encodeURIComponent(path);
-}
 
 /** Format a Date as a YYYY-MM string. */
 function formatMonth(date: Date): string {
@@ -32,11 +25,12 @@ function previousMonth(yyyyMM: string): string {
 
 /**
  * Resolve the YYYY-MM month string to use when looking up reports.
- * Defaults to the current calendar month but always tries the previous month
- * as a fallback, since Play Console files for the current month may not be
- * published until the month is over.
+ * Returns up to 3 candidate months, newest first.
+ * Defaults to the current calendar month but always includes the two prior
+ * months as fallbacks — Play Console may not generate dimension files
+ * (e.g. _app_version.csv) until later in the reporting cycle.
  */
-function resolveReportMonth(optMonth?: string): { primary: string; fallback: string } {
+function resolveReportMonth(optMonth?: string): { primary: string; candidates: string[] } {
   if (optMonth != null && optMonth !== "") {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(optMonth)) {
       throw new CapabilityError(
@@ -45,10 +39,12 @@ function resolveReportMonth(optMonth?: string): { primary: string; fallback: str
         false,
       );
     }
-    return { primary: optMonth, fallback: previousMonth(optMonth) };
+    const m1 = previousMonth(optMonth);
+    return { primary: optMonth, candidates: [optMonth, m1, previousMonth(m1)] };
   }
   const primary = formatMonth(new Date());
-  return { primary, fallback: previousMonth(primary) };
+  const m1 = previousMonth(primary);
+  return { primary, candidates: [primary, m1, previousMonth(m1)] };
 }
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
@@ -89,6 +85,11 @@ const COL_TOTAL_USER_INSTALLS = "Total User Installs";
 const COL_DAILY_DEVICE_INSTALLS = "Daily Device Installs";
 const COL_DAILY_DEVICE_UNINSTALLS = "Daily Device Uninstalls";
 
+const INSTALLS_PERMISSION_MESSAGE =
+  "Your Google Play service account does not have permission to access install statistics. " +
+  "Grant access to download bulk reports for this service account in Play Console Users and permissions, " +
+  "then wait for Google to propagate bucket access.";
+
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 
 /**
@@ -99,22 +100,36 @@ const COL_DAILY_DEVICE_UNINSTALLS = "Daily Device Uninstalls";
  * Play Console CSV files are UTF-16 LE encoded (Google docs confirm this
  * under the GCS export section).
  */
-async function gcsDownloadText(accessToken: string, url: string): Promise<string | null> {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    if (res.status === 401 || res.status === 403) {
+async function gcsDownloadText(
+  storage: Storage,
+  bucket: string,
+  objectName: string,
+): Promise<string | null> {
+  try {
+    const [contents] = await storage.bucket(bucket).file(objectName).download({ validation: false, decompress: false });
+
+    // utf-16le is a valid WHATWG encoding but is absent from Bun's narrow Encoding union.
+    const decoder = new TextDecoder("utf-16le" as any);
+    return decoder.decode(contents);
+  } catch (error) {
+    const rawCode =
+      typeof error === "object" && error !== null
+        ? (error as { code?: number | string }).code
+        : undefined;
+    const status =
+      typeof rawCode === "string"
+        ? Number.parseInt(rawCode, 10)
+        : rawCode;
+
+    if (status === 404) return null;
+    if (status === 401 || status === 403) {
       throw new CapabilityError(
         "google-play",
-        "Your Google Play service account does not have permission to access install statistics. " +
-          "Please grant the 'Storage Object Viewer' role on the Play Console reports bucket, " +
-          "or check that Statistics are enabled for this service account in Play Console \u2192 Setup \u2192 API access.",
+        INSTALLS_PERMISSION_MESSAGE,
         false,
       );
     }
-    if (res.status === 429) {
+    if (status === 429) {
       throw new CapabilityError(
         "google-play",
         "Too many requests were made to Google's servers. Please wait a moment and try again.",
@@ -124,14 +139,46 @@ async function gcsDownloadText(accessToken: string, url: string): Promise<string
     throw new CapabilityError(
       "google-play",
       "Something went wrong while fetching install statistics from Google. Please try again shortly.",
-      res.status >= 500,
+      status != null && status >= 500,
     );
   }
+}
 
-  const buffer = await res.arrayBuffer();
-  // utf-16le is a valid WHATWG encoding but is absent from Bun's narrow Encoding union.
-  const decoder = new TextDecoder("utf-16le" as any);
-  return decoder.decode(buffer);
+type GcsLookupResult =
+  | { kind: "found"; text: string }
+  | { kind: "not-found" }
+  | { kind: "forbidden" };
+
+async function gcsLookupAcrossBuckets(
+  storage: Storage,
+  buckets: string[],
+  objectName: string,
+): Promise<GcsLookupResult> {
+  let sawForbidden = false;
+
+  for (const bucket of buckets) {
+    try {
+      const text = await gcsDownloadText(storage, bucket, objectName);
+      if (text != null) {
+        return { kind: "found", text };
+      }
+    } catch (error) {
+      if (
+        error instanceof CapabilityError &&
+        error.message.includes("does not have permission to access install statistics")
+      ) {
+        sawForbidden = true;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (sawForbidden) {
+    return { kind: "forbidden" };
+  }
+
+  return { kind: "not-found" };
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -139,26 +186,37 @@ async function gcsDownloadText(accessToken: string, url: string): Promise<string
 /**
  * Build the GCS object name for a monthly installs CSV.
  *
- * Supported dimensions per Google docs:
- *   - `overview` (default) — aggregated across all versions
- *   - `app_version` — broken down by `App Version Code`
+ * Without a dimension (default) the aggregate file has no suffix:
+ *   `stats/installs/installs_{package}_{yyyyMM}.csv`
  *
- * Format: `stats/installs/installs_{package}_{yyyyMM}_{dimension}.csv`
+ * With a dimension, the suffix is appended:
+ *   - `app_version` → `_app_version.csv` — by App Version Code
+ *   - `carrier`     → `_carrier.csv`     — by mobile carrier
+ *   - `country`     → `_country.csv`     — by country
+ *   - `device`      → `_device.csv`      — by device model
+ *   - `language`    → `_language.csv`    — by user language
+ *   - `os_version`  → `_os_version.csv`  — by Android OS version
  *
  * Reference: https://support.google.com/googleplay/android-developer/answer/6135870#zippy=%2Cinstalls
  */
 function buildObjectName(
   packageName: string,
   month: string,
-  dimension = "overview",
+  dimension?: string,
 ): string {
   const yyyymm = month.replaceAll("-", "");
-  return `stats/installs/installs_${packageName}_${yyyymm}_${dimension}.csv`;
+  const suffix = dimension != null ? `_${dimension}` : "";
+  return `stats/installs/installs_${packageName}_${yyyymm}${suffix}.csv`;
 }
 
 export function createGooglePlayInstalls(
   ctx: GooglePlayContext,
 ): Pick<AppStoreCapability, "getInstallStats"> {
+  const storage = new Storage({
+    projectId: ctx.config.serviceAccountCredentials.project_id,
+    credentials: ctx.config.serviceAccountCredentials,
+  });
+
   return {
     async getInstallStats(
       _tokens,
@@ -177,35 +235,100 @@ export function createGooglePlayInstalls(
         );
       }
 
-      const bucket = `pubsite_prod_rev_${accountId}`;
-      const { primary, fallback } = resolveReportMonth(opts?.reportMonth);
+      const buckets = [`pubsite_prod_${accountId}`, `pubsite_prod_rev_${accountId}`];
+      const { primary, candidates } = resolveReportMonth(opts?.reportMonth);
       const appVersionCode = opts?.appVersionCode;
-      const dimension = appVersionCode != null ? "app_version" : "overview";
+      // appVersionCode implies app_version; otherwise default to the aggregate file.
+      const dimension = appVersionCode != null ? "app_version" : opts?.dimension;
 
-      // Mint a fresh GCS-scoped token. The token passed into this method is
-      // scoped to androidpublisher and cannot access Cloud Storage.
-      const gcsAccessToken = await mintGcsAccessToken(
-        ctx.config.serviceAccountCredentials,
-      );
-
-      // Try primary month first, then fall back to the previous month.
+      // Try each candidate month in order until a matching file is found.
+      // For each month we first try the requested dimension (or aggregate when
+      // unspecified), then fall back to `_app_version` — some Play Console
+      // accounts only publish the dimension breakdown files and not the
+      // aggregate overview CSV.
       let csvText: string | null = null;
+      let sawForbidden = false;
 
-      for (const month of [primary, fallback]) {
-        const objectName = buildObjectName(packageName, month, dimension);
-        const downloadUrl =
-          `${GCS_API}/b/${encodeURIComponent(bucket)}/o/${encodeGcsPath(objectName)}?alt=media`;
-        csvText = await gcsDownloadText(gcsAccessToken, downloadUrl);
-        if (csvText != null) break;
+      for (const month of candidates) {
+        const result = await gcsLookupAcrossBuckets(
+          storage,
+          buckets,
+          buildObjectName(packageName, month, dimension),
+        );
+        if (result.kind === "found") {
+          csvText = result.text;
+          break;
+        }
+        if (result.kind === "forbidden") {
+          sawForbidden = true;
+          continue;
+        }
+
+        // Aggregate file not found — try the _app_version dimension file as a
+        // fallback before moving to the previous month.
+        if (dimension == null) {
+          const fallback = await gcsLookupAcrossBuckets(
+            storage,
+            buckets,
+            buildObjectName(packageName, month, "app_version"),
+          );
+          if (fallback.kind === "found") {
+            csvText = fallback.text;
+            break;
+          }
+          if (fallback.kind === "forbidden") {
+            sawForbidden = true;
+          }
+        }
       }
 
       if (csvText == null) {
+        if (sawForbidden) {
+          throw new CapabilityError(
+            "google-play",
+            INSTALLS_PERMISSION_MESSAGE,
+            false,
+          );
+        }
+        if (appVersionCode != null) {
+          // Probe the aggregate file to distinguish "report doesn't exist" from
+          // "report exists but app_version dimension file isn't generated yet".
+          const overviewExists = await gcsLookupAcrossBuckets(
+            storage,
+            buckets,
+            buildObjectName(packageName, primary),
+          );
+          if (overviewExists.kind === "forbidden") {
+            throw new CapabilityError(
+              "google-play",
+              INSTALLS_PERMISSION_MESSAGE,
+              false,
+            );
+          }
+          if (overviewExists.kind === "found") {
+            throw new CapabilityError(
+              "google-play",
+              `Install data for ${primary} is available, but the per-version breakdown ` +
+                `(App Version Code "${appVersionCode}") hasn't been generated yet. ` +
+                "Google Play publishes dimension files like _app_version.csv a few days after " +
+                "the month ends. Check back at the start of next month.",
+              false,
+            );
+          }
+          throw new CapabilityError(
+            "google-play",
+            `No install statistics found for app version code "${appVersionCode}" in ` +
+              `${candidates.join(", ")}. If this version was released recently, ` +
+              "Google Play won't publish its install report until after the month ends.",
+            false,
+          );
+        }
         throw new CapabilityError(
           "google-play",
           `Install statistics are not yet available for ${primary}. ` +
             "Google Play publishes monthly install reports a few days after the month ends. " +
-            "If you are expecting data, ensure your service account has access to Statistics " +
-            "in Play Console → Setup → API access, and that the app has been live for at least one full month.",
+            "If you are expecting data, ensure your service account has bulk report access in Play Console Users and permissions, " +
+            "and that the app has been live for at least one full month.",
           false,
         );
       }

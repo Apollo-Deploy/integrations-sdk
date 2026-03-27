@@ -68,7 +68,7 @@ export function createGooglePlayVitals(
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async getVitalMetric(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       metric: VitalMetricType,
       opts?: VitalsQueryOpts,
@@ -96,8 +96,7 @@ export function createGooglePlayVitals(
         },
       };
 
-      const data = await ctx.gpRequest(
-        tokens,
+      const data = await ctx.reportingRequest(
         `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/${metricSet}:query`,
         { method: "POST", body: JSON.stringify(body) },
       );
@@ -106,17 +105,17 @@ export function createGooglePlayVitals(
     },
 
     async listCrashClusters(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       opts?: CrashQueryOpts,
     ): Promise<Paginated<CrashCluster>> {
       const params = new URLSearchParams();
+      params.set("filter", "errorType=CRASH");
       if (opts?.limit) params.set("pageSize", String(opts.limit));
       if (opts?.cursor) params.set("pageToken", opts.cursor);
 
-      const data = await ctx.gpRequest(
-        tokens,
-        `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/errorIssues?${params}&filter=errorType%3DCRASH`,
+      const data = await ctx.reportingRequest(
+        `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/errorIssues?${params}`,
       );
 
       return {
@@ -129,29 +128,28 @@ export function createGooglePlayVitals(
     },
 
     async getCrashCluster(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       clusterId: string,
     ): Promise<CrashCluster> {
-      const data = await ctx.gpRequest(
-        tokens,
+      const data = await ctx.reportingRequest(
         `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/errorIssues/${clusterId}`,
       );
       return mapGoogleCrashCluster(packageName, data);
     },
 
     async listAnrClusters(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       opts?: CrashQueryOpts,
     ): Promise<Paginated<AnrCluster>> {
       const params = new URLSearchParams();
+      params.set("filter", "errorType=ANR");
       if (opts?.limit) params.set("pageSize", String(opts.limit));
       if (opts?.cursor) params.set("pageToken", opts.cursor);
 
-      const data = await ctx.gpRequest(
-        tokens,
-        `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/errorIssues?${params}&filter=errorType%3DANR`,
+      const data = await ctx.reportingRequest(
+        `${REPORTING_URL}/apps/${encodeURIComponent(packageName)}/errorIssues?${params}`,
       );
 
       return {

@@ -2,6 +2,7 @@ import type {
   WebhookHandler,
   IntegrationEvent,
 } from "@apollo-deploy/integrations";
+import { WebhookError } from "@apollo-deploy/integrations";
 import { mapGooglePlayEvent } from "./mappers/events.js";
 import type { GooglePlayAdapterConfig } from "./types.js";
 
@@ -49,24 +50,47 @@ export function createGooglePlayWebhook(
         return true;
       }
 
-      // Option 2: Verification token in query param (checked at route level)
+      // Option 2: Verification token in query param — compared at the route
+      // level before the hub calls this handler. If configured, we trust
+      // that the route already validated the token.
       return !!config.pubsubVerificationToken;
     },
 
     parseEvent({ body }): IntegrationEvent {
       const pubsubMessage = body as PubSubPushMessage;
-      const messageData = Buffer.from(
-        pubsubMessage.message.data,
-        "base64",
-      ).toString("utf-8");
+      if (!pubsubMessage?.message?.data) {
+        throw new WebhookError(
+          "google-play",
+          "Invalid Pub/Sub push message: missing message.data field",
+        );
+      }
 
-      const notification = JSON.parse(messageData);
-      return mapGooglePlayEvent(notification);
+      let messageData: string;
+      try {
+        messageData = Buffer.from(pubsubMessage.message.data, "base64").toString("utf-8");
+      } catch {
+        throw new WebhookError(
+          "google-play",
+          "Failed to decode base64 Pub/Sub message data",
+        );
+      }
+
+      let notification: unknown;
+      try {
+        notification = JSON.parse(messageData);
+      } catch {
+        throw new WebhookError(
+          "google-play",
+          "Failed to parse Pub/Sub message data as JSON",
+        );
+      }
+
+      return mapGooglePlayEvent(notification as Parameters<typeof mapGooglePlayEvent>[0]);
     },
 
     getDeliveryId(_headers: Record<string, string>, body: unknown): string {
-      const pubsubMessage = body as PubSubPushMessage;
-      return pubsubMessage?.message?.messageId ?? crypto.randomUUID();
+      const pubsubMessage = body as PubSubPushMessage | undefined;
+      return pubsubMessage?.message?.messageId || crypto.randomUUID();
     },
 
     handleSynchronous() {

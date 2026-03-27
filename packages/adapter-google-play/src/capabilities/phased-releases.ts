@@ -9,7 +9,6 @@ import type {
 } from "@apollo-deploy/integrations";
 import { CapabilityError } from "@apollo-deploy/integrations";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -63,30 +62,20 @@ export function createGooglePlayPhasedReleases(
 > {
   return {
     async createPhasedRelease(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       request: CreatePhasedReleaseRequest,
     ): Promise<PhasedRelease> {
-      const [trackName, ...rest] = request.versionId.split(":");
-      const versionCode = rest.join(":");
-      if (!trackName || !versionCode) {
-        throw new CapabilityError(
-          "google-play",
-          'versionId must be in "track:versionCode" format (e.g. "production:42").',
-          false,
-        );
-      }
+      const { trackName, versionCode } = ctx.parseTrackVersionId(request.versionId);
 
       const fraction = (request.rolloutPercentage ?? 1) / 100;
 
       return ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
           const current = await ctx
-            .gpRequest(
-              tokens,
-              `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
+            .publisherRequest(
+              ctx.client.edits.tracks.get({ packageName, editId, track: trackName }),
             )
             .catch(() => ({ releases: [] }));
 
@@ -111,13 +100,13 @@ export function createGooglePlayPhasedReleases(
             });
           }
 
-          await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ track: trackName, releases }),
-            },
+          await ctx.publisherRequest(
+            ctx.client.edits.tracks.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { track: trackName, releases },
+            }),
           );
 
           return mapGooglePhasedRelease(packageName, trackName, versionCode, {
@@ -131,24 +120,15 @@ export function createGooglePlayPhasedReleases(
     },
 
     async getPhasedRelease(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       versionId: string,
     ): Promise<PhasedRelease> {
-      const [trackName, ...rest] = versionId.split(":");
-      const versionCode = rest.join(":");
-      if (!trackName || !versionCode) {
-        throw new CapabilityError(
-          "google-play",
-          'versionId must be in "track:versionCode" format (e.g. "production:42").',
-          false,
-        );
-      }
+      const { trackName, versionCode } = ctx.parseTrackVersionId(versionId);
 
-      return ctx.withEdit(tokens, packageName, async (editId) => {
-        const data = await ctx.gpRequest(
-          tokens,
-          `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
+      return ctx.withEdit(packageName, async (editId) => {
+        const data = await ctx.publisherRequest(
+          ctx.client.edits.tracks.get({ packageName, editId, track: trackName }),
         );
 
         const release = (data?.releases ?? []).find(
@@ -175,28 +155,18 @@ export function createGooglePlayPhasedReleases(
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async updatePhasedRelease(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       phasedReleaseId: string,
       update: UpdatePhasedReleaseRequest,
     ): Promise<PhasedRelease> {
-      const [trackName, ...rest] = phasedReleaseId.split(":");
-      const versionCode = rest.join(":");
-      if (!trackName || !versionCode) {
-        throw new CapabilityError(
-          "google-play",
-          'phasedReleaseId must be in "track:versionCode" format.',
-          false,
-        );
-      }
+      const { trackName, versionCode } = ctx.parseTrackVersionId(phasedReleaseId);
 
       return ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const current = await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
+          const current = await ctx.publisherRequest(
+            ctx.client.edits.tracks.get({ packageName, editId, track: trackName }),
           );
 
           let matchedRelease: Record<string, any> | null = null;
@@ -231,13 +201,13 @@ export function createGooglePlayPhasedReleases(
             );
           }
 
-          await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ track: trackName, releases }),
-            },
+          await ctx.publisherRequest(
+            ctx.client.edits.tracks.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { track: trackName, releases },
+            }),
           );
 
           return mapGooglePhasedRelease(
@@ -252,27 +222,17 @@ export function createGooglePlayPhasedReleases(
     },
 
     async deletePhasedRelease(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       phasedReleaseId: string,
     ): Promise<void> {
-      const [trackName, ...rest] = phasedReleaseId.split(":");
-      const versionCode = rest.join(":");
-      if (!trackName || !versionCode) {
-        throw new CapabilityError(
-          "google-play",
-          'phasedReleaseId must be in "track:versionCode" format.',
-          false,
-        );
-      }
+      const { trackName, versionCode } = ctx.parseTrackVersionId(phasedReleaseId);
 
       await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const current = await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
+          const current = await ctx.publisherRequest(
+            ctx.client.edits.tracks.get({ packageName, editId, track: trackName }),
           );
 
           const releases = (current.releases ?? []).map(
@@ -285,13 +245,13 @@ export function createGooglePlayPhasedReleases(
             },
           );
 
-          await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ track: trackName, releases }),
-            },
+          await ctx.publisherRequest(
+            ctx.client.edits.tracks.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { track: trackName, releases },
+            }),
           );
         },
         { commit: true },
@@ -299,27 +259,17 @@ export function createGooglePlayPhasedReleases(
     },
 
     async createReleaseRequest(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       versionId: string,
     ): Promise<ReleaseRequest> {
-      const [trackName, ...rest] = versionId.split(":");
-      const versionCode = rest.join(":");
-      if (!trackName || !versionCode) {
-        throw new CapabilityError(
-          "google-play",
-          'versionId must be in "track:versionCode" format (e.g. "production:42").',
-          false,
-        );
-      }
+      const { trackName, versionCode } = ctx.parseTrackVersionId(versionId);
 
       await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const current = await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
+          const current = await ctx.publisherRequest(
+            ctx.client.edits.tracks.get({ packageName, editId, track: trackName }),
           );
 
           const releases = (current.releases ?? []).map(
@@ -333,13 +283,13 @@ export function createGooglePlayPhasedReleases(
             },
           );
 
-          await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ track: trackName, releases }),
-            },
+          await ctx.publisherRequest(
+            ctx.client.edits.tracks.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { track: trackName, releases },
+            }),
           );
         },
         { commit: true },

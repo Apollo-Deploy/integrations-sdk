@@ -7,8 +7,8 @@ import type {
   AppRecoveryTargetingRequest,
   AppRecoveryListOpts,
 } from "@apollo-deploy/integrations";
+import { CapabilityError } from "@apollo-deploy/integrations";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
 
 function mapGoogleRecoveryAction(
   packageName: string,
@@ -17,7 +17,7 @@ function mapGoogleRecoveryAction(
   return {
     appRecoveryId: String(raw.appRecoveryId ?? raw.id ?? ""),
     appId: packageName,
-    status: raw.recoveryStatus ?? "RECOVERY_STATUS_UNSPECIFIED",
+    status: raw.status ?? raw.recoveryStatus ?? "RECOVERY_STATUS_UNSPECIFIED",
     targeting: raw.targeting
       ? {
           versionList: raw.targeting.versionList
@@ -30,20 +30,34 @@ function mapGoogleRecoveryAction(
           versionRange: raw.targeting.versionRange
             ? {
                 versionCodeLowerBound: String(
-                  raw.targeting.versionRange.versionCodeLowerBound,
+                  raw.targeting.versionRange.versionCodeStart ??
+                    raw.targeting.versionRange.versionCodeLowerBound,
                 ),
-                versionCodeUpperBound: raw.targeting.versionRange
-                  .versionCodeUpperBound
-                  ? String(raw.targeting.versionRange.versionCodeUpperBound)
-                  : undefined,
+                versionCodeUpperBound: raw.targeting.versionRange.versionCodeEnd
+                  ? String(raw.targeting.versionRange.versionCodeEnd)
+                  : raw.targeting.versionRange.versionCodeUpperBound
+                    ? String(raw.targeting.versionRange.versionCodeUpperBound)
+                    : undefined,
               }
             : undefined,
-          allUsers: raw.targeting.allUsers ?? undefined,
+          allUsers:
+            raw.targeting.allUsers?.isAllUsersRequested ??
+            raw.targeting.allUsers ??
+            undefined,
           androidSdkVersions: raw.targeting.androidSdks?.sdkLevels?.map(String),
-          regions: raw.targeting.regions,
+          regions: raw.targeting.regions
+            ? {
+                includeList:
+                  raw.targeting.regions.regionCode ??
+                  raw.targeting.regions.includeList,
+                excludeList: raw.targeting.regions.excludeList,
+              }
+            : undefined,
         }
       : undefined,
-    remediationMeasures: raw.remediationMeasures,
+    remediationMeasures:
+      raw.remediationMeasures ??
+      (raw.remoteInAppUpdateData ? [{ type: "REMOTE_IN_APP_UPDATE" }] : undefined),
     createTime: raw.createTime ? new Date(raw.createTime) : undefined,
     deployTime: raw.deployTime ? new Date(raw.deployTime) : undefined,
     cancelTime: raw.cancelTime ? new Date(raw.cancelTime) : undefined,
@@ -63,48 +77,81 @@ export function createGooglePlayRecovery(
   | "cancelAppRecoveryAction"
   | "addAppRecoveryTargeting"
 > {
+  async function getRecoveryAction(
+    packageName: string,
+    recoveryId: string,
+  ): Promise<AppRecoveryAction> {
+    const data = await ctx.publisherRequest(
+      ctx.client.apprecovery.list({ packageName }),
+    );
+
+    const match = (data.recoveryActions ?? []).find(
+      (action) => String(action.appRecoveryId ?? "") === recoveryId,
+    );
+    if (!match) {
+      throw new CapabilityError(
+        "google-play",
+        `App recovery action ${recoveryId} not found`,
+        false,
+      );
+    }
+
+    return mapGoogleRecoveryAction(packageName, match);
+  }
+
   return {
     async listAppRecoveryActions(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       opts?: AppRecoveryListOpts,
     ): Promise<Paginated<AppRecoveryAction>> {
-      const params = new URLSearchParams();
-      if (opts?.versionCode) params.set("versionCode", opts.versionCode);
-      if (opts?.limit) params.set("pageSize", String(opts.limit));
-      if (opts?.cursor) params.set("pageToken", opts.cursor);
-
-      const data = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/appRecoveries?${params}`,
+      const data = await ctx.publisherRequest(
+        ctx.client.apprecovery.list({
+          packageName,
+          ...(opts?.versionCode ? { versionCode: opts.versionCode } : {}),
+        }),
       );
 
+      const actions = (data?.recoveryActions ?? []).map((r: Record<string, any>) =>
+        mapGoogleRecoveryAction(packageName, r),
+      );
+      const start = opts?.cursor ? Number.parseInt(opts.cursor, 10) || 0 : 0;
+      const end = opts?.limit ? start + opts.limit : actions.length;
+      const items = actions.slice(start, end);
+      const nextCursor = end < actions.length ? String(end) : undefined;
+
       return {
-        items: (data?.recoveryActions ?? []).map((r: Record<string, any>) =>
-          mapGoogleRecoveryAction(packageName, r),
-        ),
-        hasMore: !!data?.nextPageToken,
-        cursor: data?.nextPageToken,
+        items,
+        hasMore: nextCursor != null,
+        cursor: nextCursor,
       };
     },
 
     async createAppRecoveryAction(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       request: CreateAppRecoveryRequest,
     ): Promise<AppRecoveryAction> {
+      if (request.remediationType !== "REMOTE_IN_APP_UPDATE") {
+        throw new CapabilityError(
+          "google-play",
+          "The Android Publisher SDK currently supports only REMOTE_IN_APP_UPDATE recovery actions.",
+          false,
+        );
+      }
+
       const body: Record<string, unknown> = {
-        remediationMeasures: [{ type: request.remediationType }],
+        remoteInAppUpdate: { isRemoteInAppUpdateRequested: true },
       };
 
       if (request.allUsers) {
-        body.targeting = { allUserTargeting: {} };
+        body.targeting = { allUsers: { isAllUsersRequested: true } };
       } else if (request.versionRange) {
         body.targeting = {
           versionRange: {
-            versionCodeLowerBound: request.versionRange.lowerBound,
+            versionCodeStart: request.versionRange.lowerBound,
             ...(request.versionRange.upperBound && {
-              versionCodeUpperBound: request.versionRange.upperBound,
+              versionCodeEnd: request.versionRange.upperBound,
             }),
           },
         };
@@ -114,70 +161,89 @@ export function createGooglePlayRecovery(
         };
       }
 
-      const raw = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/appRecoveries:create`,
-        { method: "POST", body: JSON.stringify(body) },
+      const raw = await ctx.publisherRequest(
+        ctx.client.apprecovery.create({
+          packageName,
+          requestBody: body,
+        }),
       );
 
       return mapGoogleRecoveryAction(packageName, raw);
     },
 
     async deployAppRecoveryAction(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       recoveryId: string,
     ): Promise<AppRecoveryAction> {
-      const raw = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:deploy`,
-        { method: "POST", body: JSON.stringify({}) },
+      await ctx.publisherRequest(
+        ctx.client.apprecovery.deploy({
+          packageName,
+          appRecoveryId: recoveryId,
+          requestBody: {},
+        }),
       );
-      return mapGoogleRecoveryAction(packageName, raw);
+      return getRecoveryAction(packageName, recoveryId);
     },
 
     async cancelAppRecoveryAction(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       recoveryId: string,
     ): Promise<AppRecoveryAction> {
-      const raw = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:cancel`,
-        { method: "POST", body: JSON.stringify({}) },
+      await ctx.publisherRequest(
+        ctx.client.apprecovery.cancel({
+          packageName,
+          appRecoveryId: recoveryId,
+          requestBody: {},
+        }),
       );
-      return mapGoogleRecoveryAction(packageName, raw);
+      return getRecoveryAction(packageName, recoveryId);
     },
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async addAppRecoveryTargeting(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       recoveryId: string,
       targeting: AppRecoveryTargetingRequest,
     ): Promise<AppRecoveryAction> {
+      if (targeting.versionCodes?.length) {
+        throw new CapabilityError(
+          "google-play",
+          "The Android Publisher SDK does not support adding recovery targeting by explicit versionCodes.",
+          false,
+        );
+      }
+
+      if (targeting.regions?.excludeList?.length) {
+        throw new CapabilityError(
+          "google-play",
+          "The Android Publisher SDK does not support excludeList for recovery targeting regions.",
+          false,
+        );
+      }
+
       const body: Record<string, unknown> = {};
 
-      if (targeting.versionCodes?.length) {
-        body.versionList = { versionCodes: targeting.versionCodes };
-      }
       if (targeting.regions) {
         body.regions = {
-          includeList: targeting.regions.includeList ?? [],
-          excludeList: targeting.regions.excludeList ?? [],
+          regionCode: targeting.regions.includeList ?? [],
         };
       }
       if (targeting.androidSdkVersions?.length) {
         body.androidSdks = { sdkLevels: targeting.androidSdkVersions };
       }
 
-      const raw = await ctx.gpRequest(
-        tokens,
-        `${BASE_URL}/applications/${packageName}/appRecoveries/${recoveryId}:addTargeting`,
-        { method: "POST", body: JSON.stringify(body) },
+      await ctx.publisherRequest(
+        ctx.client.apprecovery.addTargeting({
+          packageName,
+          appRecoveryId: recoveryId,
+          requestBody: { targetingUpdate: body },
+        }),
       );
 
-      return mapGoogleRecoveryAction(packageName, raw);
+      return getRecoveryAction(packageName, recoveryId);
     },
   };
 }

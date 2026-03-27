@@ -11,7 +11,6 @@ import type {
 import { CapabilityError } from "@apollo-deploy/integrations";
 import { mapGoogleBetaGroup, mapGoogleBetaTester } from "../mappers/models.js";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
 
 export function createGooglePlayBeta(
   ctx: GooglePlayContext,
@@ -84,7 +83,7 @@ export function createGooglePlayBeta(
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async listBetaTesters(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       groupId: string,
       _opts?: PaginationOpts,
@@ -92,71 +91,104 @@ export function createGooglePlayBeta(
       const trackName = groupId.includes(":")
         ? (groupId.split(":")[1] ?? groupId)
         : groupId;
-      const data = await ctx.withEdit(tokens, packageName, async (editId) =>
+      const data = await ctx.withEdit(packageName, async (editId) =>
         ctx
-          .gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/testers/${encodeURIComponent(trackName)}`,
+          .publisherRequest(
+            ctx.client.edits.testers.get({
+              packageName,
+              editId,
+              track: trackName,
+            }),
           )
           .catch(() => ({ googleGroups: [] })),
       );
-          const groups = (data?.googleGroups ?? []) as string[];
+      const groups = (data?.googleGroups ?? []) as string[];
       return { items: groups.map(mapGoogleBetaTester), hasMore: false };
     },
 
     async addBetaTesters(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       groupId: string,
       testers: BetaTesterInput[],
     ): Promise<void> {
-      const parts = groupId.includes(":") ? groupId.split(":") : ["", groupId];
-      const packageName = parts[0] ?? "";
-      const trackName = parts[1] ?? groupId;
+      if (!groupId.includes(":")) {
+        throw new CapabilityError(
+          "google-play",
+          `Expected groupId format "packageName:track" (e.g. "com.example.app:beta"), got "${groupId}".`,
+          false,
+        );
+      }
+      const colonIdx = groupId.indexOf(":");
+      const packageName = groupId.slice(0, colonIdx);
+      const trackName = groupId.slice(colonIdx + 1);
 
       await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const testersUrl = `${BASE_URL}/applications/${packageName}/edits/${editId}/testers/${encodeURIComponent(trackName)}`;
           const current = await ctx
-            .gpRequest(tokens, testersUrl)
+            .publisherRequest(
+              ctx.client.edits.testers.get({
+                packageName,
+                editId,
+                track: trackName,
+              }),
+            )
             .catch(() => ({ googleGroups: [] }));
           const existing = (current?.googleGroups ?? []) as string[];
           const merged = [
             ...new Set([...existing, ...testers.map((t) => t.email)]),
           ];
-          await ctx.gpRequest(tokens, testersUrl, {
-            method: "PUT",
-            body: JSON.stringify({ googleGroups: merged }),
-          });
+          await ctx.publisherRequest(
+            ctx.client.edits.testers.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { googleGroups: merged },
+            }),
+          );
         },
         { commit: true },
       );
     },
 
     async removeBetaTesters(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       groupId: string,
       testerIds: string[],
     ): Promise<void> {
-      const parts = groupId.includes(":") ? groupId.split(":") : ["", groupId];
-      const packageName = parts[0] ?? "";
-      const trackName = parts[1] ?? groupId;
+      if (!groupId.includes(":")) {
+        throw new CapabilityError(
+          "google-play",
+          `Expected groupId format "packageName:track" (e.g. "com.example.app:beta"), got "${groupId}".`,
+          false,
+        );
+      }
+      const colonIdx = groupId.indexOf(":");
+      const packageName = groupId.slice(0, colonIdx);
+      const trackName = groupId.slice(colonIdx + 1);
 
       await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const testersUrl = `${BASE_URL}/applications/${packageName}/edits/${editId}/testers/${encodeURIComponent(trackName)}`;
           const current = await ctx
-            .gpRequest(tokens, testersUrl)
+            .publisherRequest(
+              ctx.client.edits.testers.get({
+                packageName,
+                editId,
+                track: trackName,
+              }),
+            )
             .catch(() => ({ googleGroups: [] }));
           const existing = (current?.googleGroups ?? []) as string[];
           const filtered = existing.filter((e) => !testerIds.includes(e));
-          await ctx.gpRequest(tokens, testersUrl, {
-            method: "PUT",
-            body: JSON.stringify({ googleGroups: filtered }),
-          });
+          await ctx.publisherRequest(
+            ctx.client.edits.testers.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { googleGroups: filtered },
+            }),
+          );
         },
         { commit: true },
       );
@@ -164,7 +196,7 @@ export function createGooglePlayBeta(
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async assignBuildToBetaGroup(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       groupId: string,
       buildId: string,
@@ -175,7 +207,6 @@ export function createGooglePlayBeta(
 
       // Minimal releaseToTrack implementation to avoid circular deps
       await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
           const release: Record<string, unknown> = {
@@ -184,13 +215,13 @@ export function createGooglePlayBeta(
             versionCodes: [buildId],
           };
 
-          await ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/tracks/${trackName}`,
-            {
-              method: "PUT",
-              body: JSON.stringify({ track: trackName, releases: [release] }),
-            },
+          await ctx.publisherRequest(
+            ctx.client.edits.tracks.update({
+              packageName,
+              editId,
+              track: trackName,
+              requestBody: { track: trackName, releases: [release] },
+            }),
           );
         },
         { commit: true },

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type {
   AppStoreCapability,
   TokenSet,
@@ -12,7 +13,6 @@ import type {
 import { CapabilityError } from "@apollo-deploy/integrations";
 import { mapGoogleBuild, mapGoogleArtifact } from "../mappers/models.js";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
 
 /**
  * Detect file type from MIME, then filename extension (for `File` objects).
@@ -27,6 +27,10 @@ function detectFileType(file: Blob): "aab" | "apk" | "ipa" | null {
   return null;
 }
 
+async function blobToUploadBody(file: Blob): Promise<Buffer> {
+  return Buffer.from(await file.arrayBuffer());
+}
+
 export function createGooglePlayBuilds(
   ctx: GooglePlayContext,
 ): Pick<
@@ -37,89 +41,68 @@ export function createGooglePlayBuilds(
   | "getArtifactDownloadUrl"
   | "uploadBinary"
 > {
+  /** Shared helper: opens an edit, fetches all bundles + APKs, and maps them. */
+  async function fetchAllBuildsInEdit(packageName: string): Promise<StoreBuild[]> {
+    return ctx.withEdit(packageName, async (editId) => {
+      const [bundles, apks] = await Promise.all([
+        ctx.publisherRequest(
+          ctx.client.edits.bundles.list({ packageName, editId }),
+        ),
+        ctx.publisherRequest(
+          ctx.client.edits.apks.list({ packageName, editId }),
+        ),
+      ]);
+
+      return [
+        ...(bundles?.bundles ?? []).map((b: Record<string, any>) =>
+          mapGoogleBuild(packageName, b, "bundle"),
+        ),
+        ...(apks?.apks ?? []).map((a: Record<string, any>) =>
+          mapGoogleBuild(packageName, a, "apk"),
+        ),
+      ];
+    });
+  }
+
   return {
     async listBuilds(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       _opts?: BuildListOpts,
     ): Promise<Paginated<StoreBuild>> {
-      return ctx.withEdit(tokens, packageName, async (editId) => {
-        const [bundles, apks] = await Promise.all([
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/bundles`,
-          ),
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/apks`,
-          ),
-        ]);
-
-        const items: StoreBuild[] = [
-          ...(bundles?.bundles ?? []).map((b: Record<string, any>) =>
-            mapGoogleBuild(packageName, b, "bundle"),
-          ),
-          ...(apks?.apks ?? []).map((a: Record<string, any>) =>
-            mapGoogleBuild(packageName, a, "apk"),
-          ),
-        ];
-
-        return { items, hasMore: false };
-      });
+      const items = await fetchAllBuildsInEdit(packageName);
+      return { items, hasMore: false };
     },
 
     async getBuild(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       buildId: string,
     ): Promise<StoreBuild> {
-      return ctx.withEdit(tokens, packageName, async (editId) => {
-        const [bundles, apks] = await Promise.all([
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/bundles`,
-          ),
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/apks`,
-          ),
-        ]);
-
-        const allBuilds = [
-          ...(bundles?.bundles ?? []).map((b: Record<string, any>) =>
-            mapGoogleBuild(packageName, b, "bundle"),
-          ),
-          ...(apks?.apks ?? []).map((a: Record<string, any>) =>
-            mapGoogleBuild(packageName, a, "apk"),
-          ),
-        ];
-
-        const match = allBuilds.find((b) => b.id === buildId);
-        if (!match) {
-          throw new CapabilityError(
-            "google-play",
-            `Build ${buildId} not found`,
-            false,
-          );
-        }
-        return match;
-      });
+      const allBuilds = await fetchAllBuildsInEdit(packageName);
+      const match = allBuilds.find((b) => b.id === buildId);
+      if (!match) {
+        throw new CapabilityError(
+          "google-play",
+          `Build ${buildId} not found`,
+          false,
+        );
+      }
+      return match;
     },
 
     async listBuildArtifacts(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       buildId: string,
     ): Promise<StoreArtifact[]> {
-      return ctx.withEdit(tokens, packageName, async (editId) => {
+      return ctx.withEdit(packageName, async (editId) => {
         const [bundles, apks] = await Promise.all([
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/bundles`,
+          ctx.publisherRequest(
+            ctx.client.edits.bundles.list({ packageName, editId }),
           ),
-          ctx.gpRequest(
-            tokens,
-            `${BASE_URL}/applications/${packageName}/edits/${editId}/apks`,
+          ctx.publisherRequest(
+            ctx.client.edits.apks.list({ packageName, editId }),
           ),
         ]);
 
@@ -156,7 +139,7 @@ export function createGooglePlayBuilds(
 
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async uploadBinary(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       file: Blob,
       opts: UploadBinaryOpts = {},
@@ -180,21 +163,31 @@ export function createGooglePlayBuilds(
       }
 
       const channel = opts.channel ?? "store";
+      const uploadBody = await blobToUploadBody(file);
 
       if (channel === "internal-sharing") {
-        const path =
-          fileType === "aab"
-            ? `/applications/internalappsharing/${packageName}/artifacts/bundle`
-            : `/applications/internalappsharing/${packageName}/artifacts/apk`;
         const contentType =
           fileType === "apk"
             ? "application/vnd.android.package-archive"
             : "application/octet-stream";
 
-        const raw = await ctx.gpUpload(tokens, path, file, contentType);
+        const raw =
+          fileType === "aab"
+            ? await ctx.publisherRequest(
+                ctx.client.internalappsharingartifacts.uploadbundle({
+                  packageName,
+                  media: { mimeType: contentType, body: uploadBody },
+                }),
+              )
+            : await ctx.publisherRequest(
+                ctx.client.internalappsharingartifacts.uploadapk({
+                  packageName,
+                  media: { mimeType: contentType, body: uploadBody },
+                }),
+              );
         const artifact: InternalSharingArtifact = {
           downloadUrl: raw.downloadUrl ?? "",
-          certificateFingerprint: raw.certificateFingerprint,
+          certificateFingerprint: raw.certificateFingerprint ?? undefined,
           type: fileType,
         };
         return { channel: "internal-sharing", fileType, artifact };
@@ -208,15 +201,20 @@ export function createGooglePlayBuilds(
 
       if (fileType === "aab") {
         const build = await ctx.withEdit(
-          tokens,
           packageName,
           async (editId) => {
-            const raw = await ctx.gpUpload(
-              tokens,
-              `/applications/${packageName}/edits/${editId}/bundles`,
-              file,
-              "application/octet-stream",
-              query,
+            const raw = await ctx.publisherRequest(
+              ctx.client.edits.bundles.upload({
+                packageName,
+                editId,
+                ...(query.deviceTierConfigId
+                  ? { deviceTierConfigId: query.deviceTierConfigId }
+                  : {}),
+                media: {
+                  mimeType: "application/octet-stream",
+                  body: uploadBody,
+                },
+              }),
             );
             return mapGoogleBuild(packageName, raw, "bundle");
           },
@@ -227,14 +225,17 @@ export function createGooglePlayBuilds(
 
       // fileType === 'apk'
       const build = await ctx.withEdit(
-        tokens,
         packageName,
         async (editId) => {
-          const raw = await ctx.gpUpload(
-            tokens,
-            `/applications/${packageName}/edits/${editId}/apks`,
-            file,
-            "application/vnd.android.package-archive",
+          const raw = await ctx.publisherRequest(
+            ctx.client.edits.apks.upload({
+              packageName,
+              editId,
+              media: {
+                mimeType: "application/vnd.android.package-archive",
+                body: uploadBody,
+              },
+            }),
           );
           return mapGoogleBuild(packageName, raw, "apk");
         },

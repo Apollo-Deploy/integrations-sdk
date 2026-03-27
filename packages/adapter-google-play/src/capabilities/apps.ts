@@ -21,7 +21,7 @@ export function createGooglePlayApps(
     },
 
     async getApp(tokens: TokenSet, packageName: string): Promise<StoreApp> {
-      return ctx.withEdit(tokens, packageName, () =>
+      return ctx.withEdit(packageName, () =>
         Promise.resolve(mapGoogleApp(packageName, {})),
       );
     },

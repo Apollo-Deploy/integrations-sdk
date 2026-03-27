@@ -266,10 +266,9 @@ export function flattenGeneratedArtifactsToBuildDeliverables(
       deliverables.push({
         id: artifact.downloadId,
         buildId,
-        type:
-          artifact.type === "split"
-            ? "app_thinning_variant"
-            : "app_thinning_variant",
+        // All Google Play generated artifacts (split, standalone, universal,
+        // asset pack, recovery) are app-thinning variants in the normalized model.
+        type: "app_thinning_variant",
         variant: [artifact.type, typeSuffix].filter(Boolean).join(""),
         downloadable: true,
         downloadUrl: undefined,

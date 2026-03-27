@@ -151,7 +151,7 @@ export function mapGoogleVersion(
   };
 }
 
-export function mapGoogleReview(raw: Record<string, any>): StoreReview {
+export function mapGoogleReview(raw: Record<string, any>, packageName = ""): StoreReview {
   const comment = raw.comments?.[0]?.userComment;
   const devComment: string | undefined =
     raw.comments?.[1]?.developerComment?.text;
@@ -169,12 +169,13 @@ export function mapGoogleReview(raw: Record<string, any>): StoreReview {
 
   return {
     id: raw.reviewId,
-    appId: "",
+    appId: packageName,
     author: raw.authorName ?? "Anonymous",
     rating: comment?.starRating ?? 0,
     title: undefined,
     body: comment?.text ?? "",
     language: comment?.reviewerLanguage ?? "en",
+    appVersion: comment?.appVersionName ?? (comment?.appVersionCode != null ? String(comment.appVersionCode) : undefined),
     reply,
     createdAt: new Date(Number(comment?.lastModified?.seconds ?? 0) * 1000),
     updatedAt: new Date(Number(comment?.lastModified?.seconds ?? 0) * 1000),

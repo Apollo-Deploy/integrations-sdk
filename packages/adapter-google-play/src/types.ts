@@ -8,7 +8,9 @@ export interface GooglePlayAdapterConfig {
    * Visible in the Play Console URL:
    *   https://play.google.com/console/u/0/developers/{DEVELOPER_ACCOUNT_ID}/...
    *
-   * Required for `getInstallStats` — used to locate the Cloud Storage bucket:
+   * Required for `getInstallStats` — used to locate the Cloud Storage bucket.
+   * The adapter will try both bucket naming conventions used by Google:
+   *   `gs://pubsite_prod_{developerAccountId}/stats/installs/`
    *   `gs://pubsite_prod_rev_{developerAccountId}/stats/installs/`
    */
   developerAccountId?: string;

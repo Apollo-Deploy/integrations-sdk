@@ -11,7 +11,18 @@ import {
   flattenGeneratedArtifactsToBuildDeliverables,
 } from "../mappers/generated-artifacts.js";
 import type { GooglePlayContext } from "./_context.js";
-import { BASE_URL } from "./_context.js";
+
+function parseVersionCode(versionCode: string): number {
+  const parsed = Number(versionCode);
+  if (!Number.isFinite(parsed)) {
+    throw new CapabilityError(
+      "google-play",
+      `Invalid versionCode: ${versionCode}`,
+      false,
+    );
+  }
+  return parsed;
+}
 
 export function createGooglePlayGeneratedArtifacts(
   ctx: GooglePlayContext,
@@ -31,7 +42,7 @@ export function createGooglePlayGeneratedArtifacts(
      * and recovery modules — all grouped by signing key.
      */
     async listGeneratedArtifacts(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       opts: GeneratedArtifactsListOpts,
     ): Promise<GeneratedArtifactsResult> {
@@ -44,13 +55,15 @@ export function createGooglePlayGeneratedArtifacts(
         );
       }
 
-      const url = `${BASE_URL}/applications/${packageName}/generatedApks/${versionCode}`;
-      const data = await ctx.gpRequest<{
-        generatedApks?: Record<string, unknown>[];
-      }>(tokens, url);
+      const data = await ctx.publisherRequest(
+        ctx.client.generatedapks.list({
+          packageName,
+          versionCode: parseVersionCode(versionCode),
+        }),
+      );
 
       const signingKeys = (data.generatedApks ?? []).map(
-        mapGeneratedArtifactsPerSigningKey,
+        (raw) => mapGeneratedArtifactsPerSigningKey(raw as Record<string, unknown>),
       );
 
       return {
@@ -69,7 +82,7 @@ export function createGooglePlayGeneratedArtifacts(
      */
     // eslint-disable-next-line max-params -- implements interface; method signature is contractual
     async downloadGeneratedArtifact(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       versionCode: string,
       downloadId: string,
@@ -82,24 +95,23 @@ export function createGooglePlayGeneratedArtifacts(
         );
       }
 
-      const url = `${BASE_URL}/applications/${packageName}/generatedApks/${versionCode}/downloads/${downloadId}:download`;
-
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${tokens.accessToken}`,
-        },
-      });
-
-      if (!res.ok) {
-        const body = await res.text();
-        throw new CapabilityError(
-          "google-play",
-          `Failed to download generated artifact: ${res.status} ${body}`,
-          res.status === 429,
+      try {
+        const res = await ctx.client.generatedapks.download(
+          {
+            packageName,
+            versionCode: parseVersionCode(versionCode),
+            downloadId,
+          },
+          { responseType: "stream" },
         );
-      }
 
-      return res;
+        return new Response(res.data as any, {
+          status: res.status,
+          headers: res.headers as Record<string, string>,
+        });
+      } catch (error) {
+        throw ctx.publisherError(error, "Failed to download generated artifact");
+      }
     },
 
     /**
@@ -107,16 +119,18 @@ export function createGooglePlayGeneratedArtifacts(
      * artifacts into a normalized BuildDeliverablesResult.
      */
     async listBuildDeliverables(
-      tokens: TokenSet,
+      _tokens: TokenSet,
       packageName: string,
       buildId: string,
     ): Promise<BuildDeliverablesResult> {
-      const url = `${BASE_URL}/applications/${packageName}/generatedApks/${buildId}`;
-      const data = await ctx.gpRequest<{
-        generatedApks?: Record<string, unknown>[];
-      }>(tokens, url);
+      const data = await ctx.publisherRequest(
+        ctx.client.generatedapks.list({
+          packageName,
+          versionCode: parseVersionCode(buildId),
+        }),
+      );
       const signingKeys = (data.generatedApks ?? []).map(
-        mapGeneratedArtifactsPerSigningKey,
+        (raw) => mapGeneratedArtifactsPerSigningKey(raw as Record<string, unknown>),
       );
 
       const deliverables = flattenGeneratedArtifactsToBuildDeliverables(
