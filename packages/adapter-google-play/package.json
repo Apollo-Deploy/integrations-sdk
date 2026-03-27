@@ -1,6 +1,6 @@
 {
   "name": "@apollo-deploy/adapter-google-play",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Google Play Console adapter for Apollo Deploy integration hub",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@apollo-deploy/integrations": "^1.6.0",
+    "@apollo-deploy/integrations": "^1.6.1",
     "@google-cloud/storage": "^7.19.0",
     "@googleapis/androidpublisher": "^35.3.0",
     "google-auth-library": "^10.6.2"

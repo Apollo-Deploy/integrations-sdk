@@ -1,5 +1,11 @@
 # @apollo-deploy/integrations
 
+## 1.6.1
+
+### Patch Changes
+
+- d42d0ac: refactor(google-play): migrate to official @googleapis/androidpublisher SDK
+
 ## 1.6.0
 
 ### Minor Changes

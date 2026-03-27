@@ -1,5 +1,13 @@
 # @apollo-deploy/adapter-google-play
 
+## 1.5.1
+
+### Patch Changes
+
+- d42d0ac: refactor(google-play): migrate to official @googleapis/androidpublisher SDK
+- Updated dependencies [d42d0ac]
+  - @apollo-deploy/integrations@1.6.1
+
 ## 1.5.0
 
 ### Minor Changes
