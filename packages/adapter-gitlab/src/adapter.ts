@@ -26,7 +26,7 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
         flow: "oauth",
         submitLabel: "Connect GitLab",
       },
-      config: {
+      resourceConfig: {
         submitLabel: "Save repository",
         fields: [
           {
@@ -66,7 +66,7 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
 
     const repositories = await sourceControl.listRepositories(ctx.tokens, {
       cursor: ctx.cursor,
-      limit: 100,
+      limit: ctx.limit ?? 100,
     });
 
     return {

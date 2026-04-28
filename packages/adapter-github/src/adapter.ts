@@ -31,7 +31,7 @@ export const createGithubAdapter = defineAdapter<GithubAdapterConfig>({
         flow: "oauth",
         submitLabel: "Connect GitHub",
       },
-      config: {
+      resourceConfig: {
         submitLabel: "Save repository",
         fields: [
           {

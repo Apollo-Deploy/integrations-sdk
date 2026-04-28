@@ -63,7 +63,7 @@ export interface UiChoiceSource {
 }
 
 /**
- * Shared field primitive used by both connection and config surfaces.
+ * Shared field primitive used by connection and configuration surfaces.
  */
 export interface UiField {
   /** Stable field identifier — used as the key when submitting values. */
@@ -105,7 +105,7 @@ export interface ConnectionSurfaceManifest {
 }
 
 /**
- * Post-connection configuration surface.
+ * Reusable configuration surface for shared or resource-specific settings.
  */
 export interface ConfigSurfaceManifest {
   submitLabel?: string;
@@ -118,7 +118,8 @@ export interface ConfigSurfaceManifest {
  */
 export interface AdapterUiManifest {
   connection: ConnectionSurfaceManifest;
-  config?: ConfigSurfaceManifest;
+  sharedConfig?: ConfigSurfaceManifest;
+  resourceConfig?: ConfigSurfaceManifest;
 }
 
 /**

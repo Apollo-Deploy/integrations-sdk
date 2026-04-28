@@ -51,15 +51,6 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
               "Use this instead of OAuth 2.0 when you don't need per-user authorization.",
           },
           {
-            key: "defaultOrgSlug",
-            label: "Organization Slug",
-            type: "text",
-            required: false,
-            placeholder: "my-company",
-            helpText:
-              "Default organization slug used when not specified in method calls.",
-          },
-          {
             key: "baseUrl",
             label: "Base URL (self-hosted only)",
             type: "url",
@@ -70,7 +61,21 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
           },
         ],
       },
-      config: {
+      sharedConfig: {
+        submitLabel: "Save organization",
+        fields: [
+          {
+            key: "orgSlug",
+            label: "Organization",
+            type: "text",
+            required: true,
+            placeholder: "my-company",
+            helpText:
+              "Organization slug used as the default scope when resolving projects and monitoring data.",
+          },
+        ],
+      },
+      resourceConfig: {
         submitLabel: "Save project",
         fields: [
           {
