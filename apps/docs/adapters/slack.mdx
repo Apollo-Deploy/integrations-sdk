@@ -74,21 +74,25 @@ SLACK_SIGNING_SECRET=abcd1234efgh5678ijkl9012
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createSlackAdapter } from '@apollo-deploy/adapter-slack';
 
-const hub = new IntegrationHub();
-
-hub.register('slack', createSlackAdapter({
-  clientId: process.env.SLACK_CLIENT_ID!,
-  clientSecret: process.env.SLACK_CLIENT_SECRET!,
-  signingSecret: process.env.SLACK_SIGNING_SECRET!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    slack: createSlackAdapter({
+      clientId: process.env.SLACK_CLIENT_ID!,
+      clientSecret: process.env.SLACK_CLIENT_SECRET!,
+      signingSecret: process.env.SLACK_SIGNING_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('slack', (event) => {
-  if (event.eventType === 'message.created') {
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'slack' && event.eventType === 'message.created') {
     const msg = (event.data as any).event;
     console.log(`New message in <#${msg.channel}>: ${msg.text}`);
   }

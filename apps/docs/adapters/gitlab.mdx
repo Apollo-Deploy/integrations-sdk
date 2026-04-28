@@ -75,22 +75,28 @@ GITLAB_INSTANCE_URL=https://gitlab.yourcompany.com
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createGitlabAdapter } from '@apollo-deploy/adapter-gitlab';
 
-const hub = new IntegrationHub();
-
-hub.register('gitlab', createGitlabAdapter({
-  clientId: process.env.GITLAB_CLIENT_ID!,
-  clientSecret: process.env.GITLAB_CLIENT_SECRET!,
-  webhookSecret: process.env.GITLAB_WEBHOOK_SECRET!,
-  instanceUrl: process.env.GITLAB_INSTANCE_URL,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    gitlab: createGitlabAdapter({
+      clientId: process.env.GITLAB_CLIENT_ID!,
+      clientSecret: process.env.GITLAB_CLIENT_SECRET!,
+      webhookSecret: process.env.GITLAB_WEBHOOK_SECRET!,
+      instanceUrl: process.env.GITLAB_INSTANCE_URL,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('gitlab', (event) => {
-  console.log('GitLab event:', event.eventType, event.data);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'gitlab') {
+    console.log('GitLab event:', event.eventType, event.data);
+  }
 });
 ```
 

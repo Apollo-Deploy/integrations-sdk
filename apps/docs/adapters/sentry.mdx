@@ -104,25 +104,26 @@ SENTRY_WEBHOOK_SECRET=whsec_your_secret_at_least_32_chars
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createSentryAdapter } from '@apollo-deploy/adapter-sentry';
 
-const hub = new IntegrationHub();
-
-hub.register('sentry', createSentryAdapter({
-  authToken: process.env.SENTRY_AUTH_TOKEN!,
-  defaultOrgSlug: process.env.SENTRY_ORG_SLUG,
-  webhookSecret: process.env.SENTRY_WEBHOOK_SECRET,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    sentry: createSentryAdapter({
+      authToken: process.env.SENTRY_AUTH_TOKEN!,
+      defaultOrgSlug: process.env.SENTRY_ORG_SLUG,
+      webhookSecret: process.env.SENTRY_WEBHOOK_SECRET,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('sentry', (event) => {
-  if (event.eventType === 'monitor.issue.created') {
-    console.log('New Sentry issue:', event.data);
-  }
-  if (event.eventType === 'monitor.alert.triggered') {
-    console.log('Alert triggered:', event.data);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'sentry') {
+    console.log('Sentry event:', event.eventType, event.data);
   }
 });
 ```

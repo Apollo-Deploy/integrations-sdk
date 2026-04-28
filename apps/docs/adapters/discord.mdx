@@ -77,24 +77,27 @@ DISCORD_GUILD_ID=987654321098765432
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createDiscordAdapter } from '@apollo-deploy/adapter-discord';
 
-const hub = new IntegrationHub();
-
-hub.register('discord', createDiscordAdapter({
-  clientId: process.env.DISCORD_CLIENT_ID!,
-  clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-  botToken: process.env.DISCORD_BOT_TOKEN!,
-  publicKey: process.env.DISCORD_PUBLIC_KEY!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    discord: createDiscordAdapter({
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+      botToken: process.env.DISCORD_BOT_TOKEN!,
+      publicKey: process.env.DISCORD_PUBLIC_KEY!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('discord', (event) => {
-  if (event.eventType === 'application_command') {
-    const data = event.data as any;
-    console.log('Slash command:', data.data?.name);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'discord') {
+    console.log('Discord event:', event.eventType, event.data);
   }
 });
 ```

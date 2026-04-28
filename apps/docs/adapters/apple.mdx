@@ -95,22 +95,28 @@ const apple = createAppleAdapter({
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createAppleAdapter } from '@apollo-deploy/adapter-apple';
 
-const hub = new IntegrationHub();
-
-hub.register('apple', createAppleAdapter({
-  issuerId: process.env.APPLE_ISSUER_ID!,
-  keyId: process.env.APPLE_KEY_ID!,
-  privateKey: process.env.APPLE_PRIVATE_KEY!,
-  vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    apple: createAppleAdapter({
+      issuerId: process.env.APPLE_ISSUER_ID!,
+      keyId: process.env.APPLE_KEY_ID!,
+      privateKey: process.env.APPLE_PRIVATE_KEY!,
+      vendorNumber: process.env.APPLE_VENDOR_NUMBER!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('apple', (event) => {
-  console.log('Apple event:', event.eventType, event.data);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'apple') {
+    console.log('Apple event:', event.eventType, event.data);
+  }
 });
 ```
 

@@ -4,7 +4,7 @@ description: Feature matrix, token lifecycle comparison, and configuration refer
 type: overview
 ---
 
-Each adapter wraps a specific provider's API behind a common interface. Adapters handle OAuth, webhook signature verification, event normalization, and capability method implementations — all type-safe and uniformly structured.
+Each adapter wraps a specific provider's API behind a common interface. Adapters handle OAuth, webhook signature verification, event normalization, capability method implementations, and optional host-rendered setup manifests — all type-safe and uniformly structured.
 
 ## Feature matrix
 
@@ -74,7 +74,7 @@ Each adapter declares a `tokenMetadata` object that drives the hub's refresh sch
 
 ## Listing registered adapters
 
-Call `hub.listAdapters()` to enumerate all adapters registered with your hub, including metadata and capabilities:
+Call `hub.listAdapters()` to enumerate all adapters registered with your hub, including metadata, capabilities, and any static setup manifest exposed through `ui.manifest`:
 
 ```typescript title="lib/integrations.ts" lineNumbers
 const adapters = hub.listAdapters();
@@ -90,6 +90,15 @@ const adapters = hub.listAdapters();
 //       dateAdded: '2024-01-15',
 //       websiteUrl: 'https://github.com',
 //       docsUrl: 'https://docs.github.com/en/apps',
+//     },
+//     ui: {
+//       manifest: {
+//         connection: { flow: 'oauth', submitLabel: 'Connect GitHub' },
+//         config: {
+//           submitLabel: 'Save repository',
+//           fields: [{ key: 'repoId', label: 'Repository', type: 'select' }],
+//         },
+//       },
 //     },
 //   },
 //   { key: 'jira', id: 'jira', name: 'Jira', capabilities: ['issue-tracking'], metadata: { ... } },
@@ -113,11 +122,29 @@ export default function IntegrationsPage() {
           <p>{adapter.metadata.description}</p>
           <p>Category: {adapter.metadata.category}</p>
           <p>Capabilities: {adapter.capabilities.join(', ')}</p>
+          <p>Connection flow: {adapter.ui?.manifest.connection.flow ?? 'none'}</p>
         </div>
       ))}
     </div>
   );
 }
+```
+
+## Resolving setup field choices
+
+`hub.listAdapters()` only exposes static UI metadata. When a field needs provider-backed options, use the adapter instance and call `ui.listChoices()` with tokens and host scope:
+
+```typescript title="lib/integration-choices.ts" lineNumbers
+const github = hub.getAdapter('github');
+
+const page = await github.ui?.listChoices?.('repositories', {
+  tokens,
+  limit: 50,
+  scope: { orgId: 'org_123', appId: 'app_123' },
+});
+
+console.log(page?.choices);
+console.log(page?.hasMore);
 ```
 
 ---

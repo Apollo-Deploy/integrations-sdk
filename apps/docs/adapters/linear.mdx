@@ -71,23 +71,26 @@ LINEAR_WEBHOOK_SECRET=whsec_your_secret_at_least_32_chars
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createLinearAdapter } from '@apollo-deploy/adapter-linear';
 
-const hub = new IntegrationHub();
-
-hub.register('linear', createLinearAdapter({
-  clientId: process.env.LINEAR_CLIENT_ID!,
-  clientSecret: process.env.LINEAR_CLIENT_SECRET!,
-  webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    linear: createLinearAdapter({
+      clientId: process.env.LINEAR_CLIENT_ID!,
+      clientSecret: process.env.LINEAR_CLIENT_SECRET!,
+      webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('linear', (event) => {
-  if (event.eventType === 'issue.create') {
-    const data = event.data as any;
-    console.log('New Linear issue:', data.data?.title);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'linear') {
+    console.log('Linear event:', event.eventType, event.data);
   }
 });
 ```

@@ -97,24 +97,28 @@ const github = createGithubAdapter({
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createGithubAdapter } from '@apollo-deploy/adapter-github';
 
-const hub = new IntegrationHub();
-
-hub.register('github', createGithubAdapter({
-  appId: process.env.GITHUB_APP_ID!,
-  privateKey: process.env.GITHUB_PRIVATE_KEY!,
-  clientId: process.env.GITHUB_CLIENT_ID!,
-  clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-  webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    github: createGithubAdapter({
+      appId: process.env.GITHUB_APP_ID!,
+      privateKey: process.env.GITHUB_PRIVATE_KEY!,
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      webhookSecret: process.env.GITHUB_WEBHOOK_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
 // Listen for any pull request event
-hub.onEvent('github', (event) => {
-  if (event.eventType.startsWith('pull_request.')) {
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'github' && event.eventType.startsWith('pull_request.')) {
     console.log('PR event:', event.eventType, event.data);
   }
 });

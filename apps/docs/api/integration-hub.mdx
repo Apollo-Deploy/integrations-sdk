@@ -145,6 +145,7 @@ Returns a snapshot of static information for every registered adapter. Useful fo
     name: { description: 'Human-readable name.', type: 'string' },
     capabilities: { description: 'Declared capability identifiers.', type: 'readonly AdapterCapability[]' },
     metadata: { description: 'Descriptive metadata: icon, description, dateAdded, etc.', type: 'AdapterMetadata' },
+    ui: { description: 'Static UI manifest exposed by the adapter definition.', type: 'AdapterUiInfo | undefined' },
   }}
 />
 

@@ -70,6 +70,19 @@ export const hub = new IntegrationHub({
 });
 ```
 
+## Inspect setup manifests
+
+Use `hub.listAdapters()` when you need static catalog metadata or a generic setup manifest for a host-rendered integration UI:
+
+```typescript title="lib/integration-catalog.ts" lineNumbers
+const catalog = hub.listAdapters();
+const github = catalog.find((adapter) => adapter.key === 'github');
+
+console.log(github?.metadata.description);
+console.log(github?.ui?.manifest.connection.flow);
+console.log(github?.ui?.manifest.config?.fields);
+```
+
 ## Initialize adapters
 
 Call `hub.initialize()` once at startup. This runs each adapter's `onRegister` then `onReady` lifecycle hooks:
@@ -145,6 +158,28 @@ await github.sourceControl!.createCommitStatus(tokens, {
   targetUrl: `https://app.apollo.dev/deploys/${deployId}`,
 });
 ```
+
+## Resolve dynamic field choices
+
+Use the adapter instance when a setup field needs provider-backed options, because that flow requires tokens and host scope:
+
+```typescript title="lib/integration-choices.ts" lineNumbers
+const github = hub.getAdapter('github');
+
+const page = await github.ui?.listChoices?.('repositories', {
+  tokens,
+  limit: 50,
+  scope: {
+    orgId: 'org_123',
+    appId: 'app_123',
+  },
+});
+
+console.log(page?.choices);
+console.log(page?.nextCursor);
+```
+
+`hub.listAdapters()` is the static read path. `adapter.ui.listChoices()` is the dynamic runtime path.
 
 ## Next steps
 

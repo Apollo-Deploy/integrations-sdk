@@ -69,23 +69,26 @@ GOOGLE_PLAY_WEBHOOK_SECRET=your_pubsub_secret_here
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createGooglePlayAdapter } from '@apollo-deploy/adapter-google-play';
 
-const hub = new IntegrationHub();
-
-hub.register('google-play', createGooglePlayAdapter({
-  clientId: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-  webhookSecret: process.env.GOOGLE_PLAY_WEBHOOK_SECRET,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    'google-play': createGooglePlayAdapter({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      webhookSecret: process.env.GOOGLE_PLAY_WEBHOOK_SECRET,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('google-play', (event) => {
-  if (event.eventType === 'subscription.renewed') {
-    const data = event.data as any;
-    console.log('Subscription renewed:', data.subscriptionNotification?.purchaseToken);
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'google-play') {
+    console.log('Google Play event:', event.eventType, event.data);
   }
 });
 ```

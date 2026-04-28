@@ -23,6 +23,22 @@ The returned function (`createXxxAdapter`) takes your provider-specific config o
 export const createMyAdapter = defineAdapter<MyConfig>({
   id: 'my-provider',
   name: 'My Provider',
+  ui: {
+    manifest: {
+      connection: { flow: 'oauth', submitLabel: 'Connect My Provider' },
+      config: {
+        submitLabel: 'Save settings',
+        fields: [
+          {
+            key: 'projectId',
+            label: 'Project',
+            type: 'select',
+            choiceSource: { key: 'projects', pageSize: 50 },
+          },
+        ],
+      },
+    },
+  },
   capabilities: ['messaging'] as const,
   tokenMetadata: { expiresInSeconds: 3600, refreshable: true, rotatesRefreshToken: false, requiresRefreshLock: false },
   createOAuthHandler: (config) => createMyOAuth(config),
@@ -41,6 +57,7 @@ const adapter = createMyAdapter({ botToken: '...', signingSecret: '...' });
     id: { description: "Unique adapter identifier. Use lowercase kebab-case: 'github', 'google-play'.", type: 'string' },
     name: { description: "Human-readable display name: 'GitHub', 'Google Play Console'.", type: 'string' },
     metadata: { description: 'Descriptive metadata for display and discovery. See AdapterMetadata.', type: 'AdapterMetadata | undefined' },
+    ui: { description: 'General-purpose UI manifest for host applications, including connection/config surfaces.', type: 'AdapterUiInfo | undefined' },
     capabilities: { description: "Declared capabilities. Must exactly match which createXxx factories you provide.", type: 'readonly AdapterCapability[]' },
     tokenMetadata: { description: 'Token lifecycle hints for the refresh scheduler.', type: 'TokenMetadata' },
     createOAuthHandler: { description: 'Required. Factory that returns an OAuthHandler.', type: '(config: TConfig) => OAuthHandler' },
@@ -49,6 +66,7 @@ const adapter = createMyAdapter({ botToken: '...', signingSecret: '...' });
     createMessaging: { description: "Conditionally required when 'messaging' is in capabilities.", type: '((config: TConfig) => MessagingCapability) | undefined' },
     createIssueTracking: { description: "Conditionally required when 'issue-tracking' is in capabilities.", type: '((config: TConfig) => IssueTrackingCapability) | undefined' },
     createAppStore: { description: "Conditionally required when 'app-store' is in capabilities.", type: '((config: TConfig) => AppStoreCapability) | undefined' },
+    listChoices: { description: 'Optional hook for paged select-choice hydration using host-provided tokens and scope.', type: '((config: TConfig, capabilities: AdapterUiCapabilities, sourceKey: string, ctx: ChoiceResolverContext) => Promise<ChoicePage>) | undefined' },
     onRegister: { description: 'Optional lifecycle hook — called when adapter is registered with hub.', type: '((config: TConfig, ctx: AdapterContext) => void | Promise<void>) | undefined' },
     onReady: { description: 'Optional lifecycle hook — called after all adapters are registered.', type: '((config: TConfig, ctx: AdapterContext) => void | Promise<void>) | undefined' },
     onShutdown: { description: 'Optional lifecycle hook — called during graceful shutdown.', type: '((config: TConfig) => void | Promise<void>) | undefined' },

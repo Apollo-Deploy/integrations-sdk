@@ -72,21 +72,25 @@ JIRA_WEBHOOK_SECRET=whsec_your_secret_here_at_least_32_chars
 ## Registering with the hub
 
 ```typescript title="lib/integrations.ts" lineNumbers
-import { IntegrationHub } from '@apollo-deploy/integrations';
+import { IntegrationHub, createCryptoProviderFromEnv } from '@apollo-deploy/integrations';
 import { createJiraAdapter } from '@apollo-deploy/adapter-jira';
 
-const hub = new IntegrationHub();
-
-hub.register('jira', createJiraAdapter({
-  clientId: process.env.JIRA_CLIENT_ID!,
-  clientSecret: process.env.JIRA_CLIENT_SECRET!,
-  webhookSecret: process.env.JIRA_WEBHOOK_SECRET!,
-}));
+const hub = new IntegrationHub({
+  adapters: {
+    jira: createJiraAdapter({
+      clientId: process.env.JIRA_CLIENT_ID!,
+      clientSecret: process.env.JIRA_CLIENT_SECRET!,
+      webhookSecret: process.env.JIRA_WEBHOOK_SECRET!,
+    }),
+  },
+  crypto: createCryptoProviderFromEnv(),
+  logger: console,
+});
 
 await hub.initialize();
 
-hub.onEvent('jira', (event) => {
-  if (event.eventType === 'issue.created') {
+hub.onAnyEvent(async (event) => {
+  if (event.provider === 'jira' && event.eventType === 'issue.created') {
     const issue = (event.data as any).issue;
     console.log('New issue:', issue.key, issue.fields.summary);
   }

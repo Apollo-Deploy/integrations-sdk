@@ -63,7 +63,7 @@ await hub.initialize();
 ## Supported Platforms
 
 | Platform | Package | Capability | OAuth | Webhooks |
-|----------|---------|------------|-------|----------|
+| ---------- | --------- | ------------ | ------- | ---------- |
 | GitHub | `@apollo-deploy/adapter-github` | Source Control | Yes | Yes |
 | GitLab | `@apollo-deploy/adapter-gitlab` | Source Control, Issue Tracking | Yes | Yes |
 | Slack | `@apollo-deploy/adapter-slack` | Messaging | Yes | Yes |
@@ -82,8 +82,31 @@ await hub.initialize();
 - **Capability discovery** — query which adapters support `source-control`, `messaging`, `issue-tracking`, or `app-store`
 - **Encrypted token storage** — AES-256-GCM encryption with HKDF key derivation for at-rest token security
 - **Stateless adapters** — tokens are passed as parameters to every method, adapters hold config not state
+- **Host-rendered setup UI** — adapters can expose `ui.manifest` for generic setup forms and `ui.listChoices()` for provider-backed select fields
 - **Async webhook processing** — return `200` immediately, process via `waitUntil` (serverless) or fire-and-forget
 - **Webhook signature verification** — each adapter implements provider-specific signature verification
+
+## Host-rendered setup UI
+
+Adapters can expose a static setup manifest and an optional dynamic choice resolver for host applications that want to render connection and config forms without provider-specific UI code.
+
+```typescript
+const catalog = hub.listAdapters();
+const githubInfo = catalog.find((adapter) => adapter.key === 'github');
+
+console.log(githubInfo?.ui?.manifest.connection.flow);
+console.log(githubInfo?.ui?.manifest.config?.fields);
+
+const github = hub.getAdapter('github');
+const repositories = await github.ui?.listChoices?.('repositories', {
+  tokens,
+  limit: 50,
+  scope: { orgId: 'org_123', appId: 'app_123' },
+});
+```
+
+`hub.listAdapters()` returns only static metadata and `ui.manifest`.
+`adapter.ui.listChoices()` is the runtime hook for provider-backed select fields because it requires tokens and host scope.
 
 ## Capabilities
 
@@ -128,7 +151,7 @@ const sentry = hub.getAdaptersByCapability('monitoring');
 ## Packages
 
 | Package | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `@apollo-deploy/integrations` | Core SDK — `IntegrationHub`, `defineAdapter()`, types, capabilities, crypto |
 | `@apollo-deploy/adapter-github` | GitHub adapter (source control) |
 | `@apollo-deploy/adapter-gitlab` | GitLab adapter (source control + issue tracking) |
@@ -144,30 +167,47 @@ const sentry = hub.getAdaptersByCapability('monitoring');
 
 ```typescript
 import { defineAdapter } from '@apollo-deploy/integrations';
+import { createMyServiceMessaging } from './capabilities/messaging.js';
+import { createMyServiceOAuth } from './oauth.js';
+import { createMyServiceWebhook } from './webhook.js';
 
 interface MyServiceConfig {
-  apiKey: string;
+  clientId: string;
+  clientSecret: string;
   webhookSecret: string;
 }
 
 export const createMyServiceAdapter = defineAdapter<MyServiceConfig>({
+  id: 'my-service',
   name: 'my-service',
-  capabilities: ['messaging'],
-
-  oauth: {
-    buildAuthorizationUrl: async (params, config) => { /* ... */ },
-    exchangeCode: async (params, config) => { /* ... */ },
-    refreshToken: async (refreshToken, config) => { /* ... */ },
-    getIdentity: async (accessToken, config) => { /* ... */ },
-    tokenMetadata: { expiresInSeconds: 3600, refreshable: true },
+  metadata: {
+    description: 'Send alerts and workflow notifications to My Service.',
+    category: 'Messaging',
+    websiteUrl: 'https://my-service.example',
+    docsUrl: 'https://docs.my-service.example',
   },
-
-  webhook: {
-    verifySignature: async (params) => { /* ... */ },
-    parseEvent: async (params) => { /* ... */ },
+  ui: {
+    manifest: {
+      connection: {
+        flow: 'oauth',
+        submitLabel: 'Connect My Service',
+      },
+    },
   },
+  capabilities: ['messaging'] as const,
+  tokenMetadata: {
+    expiresInSeconds: 3600,
+    refreshable: true,
+    rotatesRefreshToken: false,
+    requiresRefreshLock: false,
+  },
+  createOAuthHandler: (config) => createMyServiceOAuth(config),
+  createWebhookHandler: (config) => createMyServiceWebhook(config),
+  createMessaging: (config) => createMyServiceMessaging(config),
 });
 ```
+
+If a setup form needs provider-backed select options, declare `choiceSource` on the field inside `ui.manifest` and implement `listChoices` on the adapter.
 
 ## Development
 
@@ -193,7 +233,7 @@ bun run clean
 
 ## Architecture
 
-```
+```text
 @apollo-deploy/integrations            ← Core hub, types, defineAdapter(), crypto
         ↑
 @apollo-deploy/adapter-*               ← Provider-specific adapters

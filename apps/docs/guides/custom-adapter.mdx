@@ -30,6 +30,25 @@ export const createNotionAdapter = defineAdapter<NotionAdapterConfig>({
     websiteUrl: 'https://notion.so',
     docsUrl: 'https://developers.notion.com',
   },
+  ui: {
+    manifest: {
+      connection: {
+        flow: 'oauth',
+        submitLabel: 'Connect Notion',
+      },
+      config: {
+        submitLabel: 'Save database binding',
+        fields: [
+          {
+            key: 'databaseId',
+            label: 'Database',
+            type: 'select',
+            choiceSource: { key: 'databases', pageSize: 50 },
+          },
+        ],
+      },
+    },
+  },
   capabilities: ['issue-tracking'] as const,
 
   tokenMetadata: {
@@ -42,6 +61,25 @@ export const createNotionAdapter = defineAdapter<NotionAdapterConfig>({
   createOAuthHandler: (config) => createNotionOAuth(config),
   createWebhookHandler: (config) => createNotionWebhook(config),
   createIssueTracking: (config) => createNotionIssueTracking(config),
+  listChoices: async (_config, { issueTracking }, sourceKey, ctx) => {
+    if (sourceKey !== 'databases' || !issueTracking) {
+      return { choices: [], hasMore: false };
+    }
+
+    const projects = await issueTracking.listProjects(ctx.tokens, {
+      limit: ctx.limit ?? 50,
+      cursor: ctx.cursor,
+    });
+
+    return {
+      choices: projects.items.map((project) => ({
+        value: project.id,
+        label: project.name,
+      })),
+      hasMore: projects.hasMore,
+      nextCursor: projects.cursor,
+    };
+  },
 });
 ```
 
@@ -142,6 +180,32 @@ export function createNotionWebhook(_config: NotionAdapterConfig): WebhookHandle
     },
   };
 }
+```
+
+## Add UI manifest
+
+The `ui` field is optional but strongly recommended — it is how host applications discover connection and config surfaces without provider-specific UI code:
+
+```typescript
+ui: {
+  manifest: {
+    connection: {
+      flow: 'oauth',
+      submitLabel: 'Connect Notion',
+    },
+    config: {
+      submitLabel: 'Save database binding',
+      fields: [
+        {
+          key: 'databaseId',
+          label: 'Database',
+          type: 'select',
+          choiceSource: { key: 'databases', pageSize: 50 },
+        },
+      ],
+    },
+  },
+},
 ```
 
 ## Add AdapterMetadata

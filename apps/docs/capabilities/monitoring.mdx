@@ -221,10 +221,12 @@ const feedback = await monitoring.listFeedback(tokens, {
 
 ## Webhook events
 
-Subscribe to normalized monitoring events with `hub.onEvent`:
+Subscribe to normalized monitoring events with `hub.onEvent` or `hub.onAnyEvent`:
 
 ```typescript lineNumbers
-hub.onEvent('sentry', (event) => {
+hub.onAnyEvent(async (event) => {
+  if (event.provider !== 'sentry') return;
+
   switch (event.eventType) {
     case 'monitor.issue.created':
     case 'monitor.issue.escalating':
