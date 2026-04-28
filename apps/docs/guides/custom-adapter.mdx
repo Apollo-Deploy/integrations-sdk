@@ -36,7 +36,7 @@ export const createNotionAdapter = defineAdapter<NotionAdapterConfig>({
         flow: 'oauth',
         submitLabel: 'Connect Notion',
       },
-      config: {
+      resourceConfig: {
         submitLabel: 'Save database binding',
         fields: [
           {
@@ -184,7 +184,7 @@ export function createNotionWebhook(_config: NotionAdapterConfig): WebhookHandle
 
 ## Add UI manifest
 
-The `ui` field is optional but strongly recommended — it is how host applications discover connection and config surfaces without provider-specific UI code:
+The `ui` field is optional but strongly recommended — it is how host applications discover connection, shared config, and resource config surfaces without provider-specific UI code:
 
 ```typescript
 ui: {
@@ -193,7 +193,7 @@ ui: {
       flow: 'oauth',
       submitLabel: 'Connect Notion',
     },
-    config: {
+    resourceConfig: {
       submitLabel: 'Save database binding',
       fields: [
         {

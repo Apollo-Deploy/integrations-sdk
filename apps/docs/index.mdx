@@ -16,7 +16,7 @@ Integrating with multiple platforms typically means different auth patterns, dif
 - **Stateless adapters** — tokens are passed as parameters; adapters hold config, not runtime state
 - **Built-in crypto** — AES-256-GCM token encryption with HKDF-derived keys, ready for multi-tenant use
 - **Capability discovery** — `hub.getAdaptersByCapability('source-control')` returns every adapter that supports it
-- **Host-rendered setup UI** — adapter `ui.manifest` surfaces let host apps render generic connection/config forms and resolve provider-backed field choices
+- **Host-rendered setup UI** — adapter `ui.manifest` surfaces let host apps render generic connection/shared-config/resource-config forms and resolve provider-backed field choices
 
 ## How it works
 
@@ -75,7 +75,7 @@ const catalog = hub.listAdapters();
 const githubInfo = catalog.find((adapter) => adapter.key === 'github');
 
 console.log(githubInfo?.ui?.manifest.connection.flow);
-console.log(githubInfo?.ui?.manifest.config?.fields);
+console.log(githubInfo?.ui?.manifest.resourceConfig?.fields);
 
 const github = hub.getAdapter('github');
 const repositories = await github.ui?.listChoices?.('repositories', {

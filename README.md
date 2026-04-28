@@ -88,14 +88,14 @@ await hub.initialize();
 
 ## Host-rendered setup UI
 
-Adapters can expose a static setup manifest and an optional dynamic choice resolver for host applications that want to render connection and config forms without provider-specific UI code.
+Adapters can expose a static setup manifest and an optional dynamic choice resolver for host applications that want to render connection, shared configuration, and resource configuration forms without provider-specific UI code.
 
 ```typescript
 const catalog = hub.listAdapters();
 const githubInfo = catalog.find((adapter) => adapter.key === 'github');
 
 console.log(githubInfo?.ui?.manifest.connection.flow);
-console.log(githubInfo?.ui?.manifest.config?.fields);
+console.log(githubInfo?.ui?.manifest.resourceConfig?.fields);
 
 const github = hub.getAdapter('github');
 const repositories = await github.ui?.listChoices?.('repositories', {

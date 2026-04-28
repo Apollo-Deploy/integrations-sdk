@@ -26,7 +26,18 @@ export const createMyAdapter = defineAdapter<MyConfig>({
   ui: {
     manifest: {
       connection: { flow: 'oauth', submitLabel: 'Connect My Provider' },
-      config: {
+      sharedConfig: {
+        submitLabel: 'Save workspace',
+        fields: [
+          {
+            key: 'workspaceId',
+            label: 'Workspace',
+            type: 'select',
+            choiceSource: { key: 'workspaces', pageSize: 25 },
+          },
+        ],
+      },
+      resourceConfig: {
         submitLabel: 'Save settings',
         fields: [
           {
@@ -57,7 +68,7 @@ const adapter = createMyAdapter({ botToken: '...', signingSecret: '...' });
     id: { description: "Unique adapter identifier. Use lowercase kebab-case: 'github', 'google-play'.", type: 'string' },
     name: { description: "Human-readable display name: 'GitHub', 'Google Play Console'.", type: 'string' },
     metadata: { description: 'Descriptive metadata for display and discovery. See AdapterMetadata.', type: 'AdapterMetadata | undefined' },
-    ui: { description: 'General-purpose UI manifest for host applications, including connection/config surfaces.', type: 'AdapterUiInfo | undefined' },
+    ui: { description: 'General-purpose UI manifest for host applications, including connection/shared/resource config surfaces.', type: 'AdapterUiInfo | undefined' },
     capabilities: { description: "Declared capabilities. Must exactly match which createXxx factories you provide.", type: 'readonly AdapterCapability[]' },
     tokenMetadata: { description: 'Token lifecycle hints for the refresh scheduler.', type: 'TokenMetadata' },
     createOAuthHandler: { description: 'Required. Factory that returns an OAuthHandler.', type: '(config: TConfig) => OAuthHandler' },
