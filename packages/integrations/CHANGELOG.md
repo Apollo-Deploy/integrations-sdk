@@ -1,5 +1,13 @@
 # @apollo-deploy/integrations
 
+## 2.0.0
+
+### Major Changes
+
+- Replace the old adapter manifest auth/config schema surface with the new UI manifest and choice-loading API.
+
+  This removes the legacy `metadata.auth`, `configSchema`, and related exported auth/config types in favor of `ui.manifest`, `listChoices`, and the new UI field/choice types.
+
 ## 1.6.1
 
 ### Patch Changes

@@ -32,39 +32,57 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
     },
     websiteUrl: "https://sentry.io",
     docsUrl: "https://docs.sentry.io/api/",
-    auth: {
-      types: ["credential_form", "oauth"],
-      fields: [
-        {
-          key: "authToken",
-          label: "Auth Token",
-          type: "password" as const,
-          required: false,
-          placeholder: "sntrys_...",
-          helpText:
-            "Static token mode: generate at Sentry → Settings → Auth Tokens. " +
-            "Required scopes: org:read, project:read, event:read, alerts:read, releases. " +
-            "Use this instead of OAuth 2.0 when you don't need per-user authorization.",
-        },
-        {
-          key: "defaultOrgSlug",
-          label: "Organization Slug",
-          type: "text" as const,
-          required: false,
-          placeholder: "my-company",
-          helpText:
-            "Default organization slug used when not specified in method calls.",
-        },
-        {
-          key: "baseUrl",
-          label: "Base URL (self-hosted only)",
-          type: "url" as const,
-          required: false,
-          placeholder: "https://sentry.example.com",
-          helpText:
-            "Leave blank for Sentry.io (cloud). Set this for self-hosted Sentry instances.",
-        },
-      ],
+  },
+  ui: {
+    manifest: {
+      connection: {
+        flows: ["credentials", "oauth"],
+        submitLabel: "Connect Sentry",
+        fields: [
+          {
+            key: "authToken",
+            label: "Auth Token",
+            type: "secret",
+            required: false,
+            placeholder: "sntrys_...",
+            helpText:
+              "Static token mode: generate at Sentry → Settings → Auth Tokens. " +
+              "Required scopes: org:read, project:read, event:read, alerts:read, releases. " +
+              "Use this instead of OAuth 2.0 when you don't need per-user authorization.",
+          },
+          {
+            key: "defaultOrgSlug",
+            label: "Organization Slug",
+            type: "text",
+            required: false,
+            placeholder: "my-company",
+            helpText:
+              "Default organization slug used when not specified in method calls.",
+          },
+          {
+            key: "baseUrl",
+            label: "Base URL (self-hosted only)",
+            type: "url",
+            required: false,
+            placeholder: "https://sentry.example.com",
+            helpText:
+              "Leave blank for Sentry.io (cloud). Set this for self-hosted Sentry instances.",
+          },
+        ],
+      },
+      config: {
+        submitLabel: "Save project",
+        fields: [
+          {
+            key: "projectSlug",
+            label: "Project",
+            type: "select",
+            required: true,
+            helpText: "Choose which Sentry project to bind to this resource.",
+            choiceSource: { key: "projects", pageSize: 100 },
+          },
+        ],
+      },
     },
   },
   capabilities: ["monitoring"] as const,
@@ -82,4 +100,40 @@ export const createSentryAdapter = defineAdapter<SentryAdapterConfig>({
   createOAuthHandler: (config) => createSentryOAuth(config),
   createWebhookHandler: (config) => createSentryWebhook(config),
   createMonitoring: (config) => createSentryMonitoring(config),
+  listChoices: async (config, { monitoring }, sourceKey, ctx) => {
+    if (sourceKey !== "projects") {
+      throw new Error(`Unknown choice source: ${sourceKey}`);
+    }
+    if (!monitoring) {
+      throw new Error("Sentry adapter does not expose monitoring capability");
+    }
+
+    let orgSlug =
+      typeof ctx.scope?.orgSlug === "string"
+        ? ctx.scope.orgSlug
+        : config.defaultOrgSlug;
+
+    if (!orgSlug) {
+      const organizations = await monitoring.listOrganizations(ctx.tokens);
+      orgSlug = organizations.items[0]?.slug;
+    }
+
+    if (!orgSlug) {
+      return {
+        choices: [],
+        hasMore: false,
+      };
+    }
+
+    const projects = await monitoring.listProjects(ctx.tokens, orgSlug);
+
+    return {
+      choices: projects.items.map((project) => ({
+        value: project.slug,
+        label: project.name,
+      })),
+      hasMore: projects.hasMore,
+      nextCursor: projects.cursor,
+    };
+  },
 });

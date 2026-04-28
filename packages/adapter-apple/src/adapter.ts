@@ -3,42 +3,6 @@ import { createAppleOAuth } from "./oauth.js";
 import { createAppleWebhook } from "./webhook.js";
 import { createAppleAppStore } from "./capabilities/index.js";
 import type { AppleAdapterConfig } from "./types.js";
-import type { AdapterAuthConfig } from "@apollo-deploy/integrations";
-
-const auth: AdapterAuthConfig = {
-  type: "credential_form",
-  fields: [
-    {
-      key: "issuerId",
-      label: "Issuer ID",
-      type: "text",
-      required: true,
-      placeholder: "57246542-96fe-1a63-e053-0824d011072a",
-      helpText:
-        "Found in App Store Connect → Users and Access → Integrations → Team Keys.",
-    },
-    {
-      key: "keyId",
-      label: "Key ID",
-      type: "text",
-      required: true,
-      placeholder: "2X9R4HXF34",
-      helpText: "The 10-character identifier for your API key.",
-      pattern: "^[A-Z0-9]{10}$",
-      minLength: 10,
-      maxLength: 10,
-    },
-    {
-      key: "privateKey",
-      label: "Private Key (.p8)",
-      type: "textarea",
-      required: true,
-      placeholder: "-----BEGIN PRIVATE KEY-----\n...",
-      helpText:
-        "Paste the contents of the .p8 key file downloaded from App Store Connect.",
-    },
-  ],
-};
 
 export const createAppleAdapter = defineAdapter<AppleAdapterConfig>({
   id: "apple",
@@ -55,7 +19,45 @@ export const createAppleAdapter = defineAdapter<AppleAdapterConfig>({
     },
     websiteUrl: "https://appstoreconnect.apple.com",
     docsUrl: "https://developer.apple.com/documentation/appstoreconnectapi",
-    auth,
+  },
+  ui: {
+    manifest: {
+      connection: {
+        flow: "credentials",
+        submitLabel: "Connect Apple App Store Connect",
+        fields: [
+          {
+            key: "issuerId",
+            label: "Issuer ID",
+            type: "text",
+            required: true,
+            placeholder: "57246542-96fe-1a63-e053-0824d011072a",
+            helpText:
+              "Found in App Store Connect → Users and Access → Integrations → Team Keys.",
+          },
+          {
+            key: "keyId",
+            label: "Key ID",
+            type: "text",
+            required: true,
+            placeholder: "2X9R4HXF34",
+            helpText: "The 10-character identifier for your API key.",
+            pattern: "^[A-Z0-9]{10}$",
+            minLength: 10,
+            maxLength: 10,
+          },
+          {
+            key: "privateKey",
+            label: "Private Key (.p8)",
+            type: "textarea",
+            required: true,
+            placeholder: "-----BEGIN PRIVATE KEY-----\n...",
+            helpText:
+              "Paste the contents of the .p8 key file downloaded from App Store Connect.",
+          },
+        ],
+      },
+    },
   },
   capabilities: ["app-store"] as const,
 

@@ -19,7 +19,27 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
     },
     websiteUrl: "https://gitlab.com",
     docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html",
-    auth: { type: "oauth" },
+  },
+  ui: {
+    manifest: {
+      connection: {
+        flow: "oauth",
+        submitLabel: "Connect GitLab",
+      },
+      config: {
+        submitLabel: "Save repository",
+        fields: [
+          {
+            key: "repoId",
+            label: "Repository",
+            type: "select",
+            required: true,
+            helpText: "Choose which repository to bind to this resource.",
+            choiceSource: { key: "repositories", pageSize: 100 },
+          },
+        ],
+      },
+    },
   },
   capabilities: ["source-control", "issue-tracking"] as const,
 
@@ -36,4 +56,26 @@ export const createGitlabAdapter = defineAdapter<GitlabAdapterConfig>({
 
   createSourceControl: (config) => createGitlabSourceControl(config),
   createIssueTracking: (config) => createGitlabIssueTracking(config),
+  listChoices: async (_config, { sourceControl }, sourceKey, ctx) => {
+    if (sourceKey !== "repositories") {
+      throw new Error(`Unknown choice source: ${sourceKey}`);
+    }
+    if (!sourceControl) {
+      throw new Error("GitLab adapter does not expose source-control capability");
+    }
+
+    const repositories = await sourceControl.listRepositories(ctx.tokens, {
+      cursor: ctx.cursor,
+      limit: 100,
+    });
+
+    return {
+      choices: repositories.items.map((repository) => ({
+        value: repository.id,
+        label: repository.fullName,
+      })),
+      hasMore: repositories.hasMore,
+      nextCursor: repositories.cursor,
+    };
+  },
 });

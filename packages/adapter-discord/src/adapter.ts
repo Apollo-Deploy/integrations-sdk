@@ -14,7 +14,14 @@ export const createDiscordAdapter = defineAdapter<DiscordAdapterConfig>({
     dateAdded: "2024-03-10",
     websiteUrl: "https://discord.com",
     docsUrl: "https://discord.com/developers/docs",
-    auth: { type: "oauth" },
+  },
+  ui: {
+    manifest: {
+      connection: {
+        flow: "oauth",
+        submitLabel: "Connect Discord",
+      },
+    },
   },
   capabilities: ["messaging"] as const,
 

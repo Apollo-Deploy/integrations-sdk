@@ -10,12 +10,10 @@
 
 import { UnknownAdapterError } from "./errors.js";
 import type {
-  AdapterAuthConfig,
   AdapterCapability,
   AdapterContext,
   AdapterMetadata,
-  ClientAuthConfig,
-  ConfigField,
+  AdapterUiInfo,
   IntegrationAdapter,
   Logger,
 } from "./types/adapter.js";
@@ -68,16 +66,8 @@ export interface AdapterInfo {
   capabilities: readonly AdapterCapability[];
   /** Descriptive metadata: icon, description, dateAdded, etc. */
   metadata: AdapterMetadata;
-  /**
-   * Client-safe authentication config.
-   * Contains `setupFlow` and optional `fields` — no scopes or internal details.
-   */
-  auth: ClientAuthConfig;
-  /**
-   * Runtime configuration schema for this integration.
-   * Present when the adapter declares `metadata.configSchema`.
-   */
-  configSchema?: ConfigField[];
+  /** General-purpose UI manifest exposed by the adapter definition. */
+  ui?: AdapterUiInfo;
 }
 
 export interface HubConfig<
@@ -169,32 +159,19 @@ export class IntegrationHub<
   listAdapters(): AdapterInfo[] {
     return Object.entries(this.adapters).map(([key, adapter]) => {
       const a = adapter;
-      const rawAuth: AdapterAuthConfig = a.metadata?.auth ?? {
-        type: "oauth",
-      };
       return {
         key,
         id: a.id,
         name: a.name,
         capabilities: a.capabilities,
         metadata: a.metadata ?? {},
-        auth: IntegrationHub._toClientAuth(rawAuth),
-        ...(a.metadata?.configSchema !== undefined && {
-          configSchema: a.metadata.configSchema,
+        ...(a.ui !== undefined && {
+          ui: {
+            manifest: a.ui.manifest,
+          },
         }),
       };
     });
-  }
-
-  /**
-   * Strip server-only fields (`oauthScopes`) from the adapter's auth config.
-   */
-  private static _toClientAuth(raw: AdapterAuthConfig): ClientAuthConfig {
-    const result: ClientAuthConfig = {};
-    if (raw.type) result.type = raw.type;
-    if (raw.types && raw.types.length > 0) result.types = raw.types;
-    if (raw.fields && raw.fields.length > 0) result.fields = raw.fields;
-    return result;
   }
 
   // ── Event Subscriptions ───────────────────────────────────────────────────

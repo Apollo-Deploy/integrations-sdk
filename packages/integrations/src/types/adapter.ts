@@ -11,6 +11,7 @@ export type AdapterCapability =
   | "monitoring";
 
 import type { OAuthHandler } from "./oauth.js";
+import type { TokenSet } from "./oauth.js";
 import type { WebhookHandler } from "./webhook.js";
 import type { SourceControlCapability } from "./capabilities/source-control.js";
 import type { MessagingCapability } from "./capabilities/messaging.js";
@@ -38,119 +39,135 @@ export interface AdapterContext {
   emitEvent: (event: IntegrationEvent) => Promise<void>;
 }
 
-// ─── Auth Type & Setup Flow ────────────────────────────────────────────────
+// ─── Adapter UI Manifest ───────────────────────────────────────────────────
 
 /**
- * Authentication type the adapter uses.
- *
- * - `oauth`            — OAuth 2.0 authorization-code flow.
- * - `credential_form`  — Static credentials entered via a form (API keys, tokens, etc.).
- * - `none`             — No credentials required (public / unauthenticated APIs).
+ * Connection flow the host application should expose to users.
  */
-export type AuthType = "oauth" | "credential_form" | "none";
+export type ConnectionFlow = "oauth" | "credentials" | "none";
 
 /**
- * A single credential field the connect UI must render.
+ * Select option label/value pair.
  */
-export interface CredentialInputField {
-  /** Stable field identifier — used as the key when submitting credentials. */
+export interface UiChoice {
+  value: string;
+  label: string;
+}
+
+/**
+ * Optional source descriptor for paged or dynamically-resolved choices.
+ */
+export interface UiChoiceSource {
+  key: string;
+  pageSize?: number;
+}
+
+/**
+ * Shared field primitive used by both connection and config surfaces.
+ */
+export interface UiField {
+  /** Stable field identifier — used as the key when submitting values. */
   key: string;
   /** User-facing label shown above the input. */
   label: string;
-  /**
-   * UI control type:
-   * - `text`         — Plain single-line text input.
-   * - `password`     — Masked text input (secrets, tokens).
-   * - `url`          — URL input with validation.
-   * - `select`       — Dropdown; requires `options`.
-   * - `textarea`     — Multi-line text area (JSON configs, keys).
-   */
-  type: "text" | "password" | "url" | "select" | "textarea";
-  required: boolean;
-  placeholder?: string;
-  /** Short help copy rendered below the input. */
+  /** UI control type. */
+  type:
+    | "text"
+    | "secret"
+    | "url"
+    | "select"
+    | "multiselect"
+    | "bool"
+    | "textarea"
+    | "number";
   helpText?: string;
-  /** Only for `type: 'select'`. */
-  options?: { value: string; label: string }[];
-
-  // ── Client-side validation ──────────────────────────────────────────────
-
-  /** Regex pattern the value must match (applied client-side). */
+  required?: boolean;
+  placeholder?: string;
+  defaultValue?: unknown;
+  choices?: UiChoice[];
+  choiceSource?: UiChoiceSource;
   pattern?: string;
-  /** Minimum string length. */
   minLength?: number;
-  /** Maximum string length. */
   maxLength?: number;
 }
 
 /**
- * A single field in an integration's runtime configuration schema.
- * Consumers use this to build a settings form for a connected integration.
+ * Connection-surface manifest.
+ *
+ * Use `flow` for adapters with a single connection mode.
+ * Use `flows` when multiple connection modes are available.
  */
-export interface ConfigField {
-  /** Stable key used when persisting the config value. */
-  key: string;
-  /** User-facing label shown above the input. */
-  label: string;
-  /** Optional longer description rendered as help text. */
-  description?: string;
-  /** UI control type. */
-  type: "text" | "select" | "boolean" | "number";
-  required: boolean;
-  /** Options for `type: 'select'`. */
-  options?: { value: string; label: string }[];
-  /**
-   * When `true`, options are fetched at runtime from the integration
-   * rather than being statically declared here.
-   */
-  dynamic?: boolean;
+export interface ConnectionSurfaceManifest {
+  flow?: ConnectionFlow;
+  flows?: ConnectionFlow[];
+  submitLabel?: string;
+  fields?: UiField[];
 }
 
 /**
- * Authentication configuration declared by an adapter.
- *
- * Use `type` when only a single auth mechanism is available.
- * Use `types` when the integration supports multiple auth mechanisms.
- * Only `credential_form` should declare `fields`.
+ * Post-connection configuration surface.
  */
-export interface AdapterAuthConfig {
-  /**
-   * Single authentication type — use when only one auth mechanism is available.
-   * Only `credential_form` may include `fields`.
-   * Mutually exclusive with `types`.
-   */
-  type?: AuthType;
-  /**
-   * Multiple authentication types — use when the integration supports more
-   * than one auth mechanism (e.g. both credential form and OAuth).
-   * Mutually exclusive with `type`.
-   */
-  types?: AuthType[];
-  /**
-   * Credential fields to render in the connect UI.
-   * Only applicable when `type` is `credential_form` or `types` includes `credential_form`.
-   */
-  fields?: CredentialInputField[];
-  /**
-   * OAuth scopes requested during authorization.
-   * Server-only — never serialised to the client.
-   */
-  oauthScopes?: string[];
+export interface ConfigSurfaceManifest {
+  submitLabel?: string;
+  fields: UiField[];
 }
 
 /**
- * Client-safe subset of `AdapterAuthConfig`.
- * Exposed via the listing endpoint — contains only what the UI needs.
- *
- * UI rendering rules:
- *   type="oauth", no fields            → OAuth button only
- *   types=["credential_form", "oauth"] → mode picker (OAuth | form) with fields
- *   type="credential_form" + fields     → form only
+ * General-purpose UI manifest that host applications can compose with
+ * their own persistence and transport layers.
  */
-export interface ClientAuthConfig {
-  type?: AuthType;
-  types?: AuthType[];
-  fields?: CredentialInputField[];
+export interface AdapterUiManifest {
+  connection: ConnectionSurfaceManifest;
+  config?: ConfigSurfaceManifest;
+}
+
+/**
+ * Page of select choices returned by an adapter-level resolver.
+ */
+export interface ChoicePage {
+  choices: UiChoice[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+/**
+ * Context provided when resolving paged choices for a UI field.
+ */
+export interface ChoiceResolverContext {
+  tokens: TokenSet;
+  scope?: Record<string, unknown>;
+  cursor?: string;
+  limit?: number;
+  query?: string;
+}
+
+/**
+ * UI capabilities exposed by an adapter instance.
+ */
+export interface AdapterUi {
+  manifest: AdapterUiManifest;
+  listChoices?: (
+    sourceKey: string,
+    ctx: ChoiceResolverContext,
+  ) => Promise<ChoicePage>;
+}
+
+/**
+ * Static UI snapshot exposed by adapter definitions and hub listings.
+ */
+export interface AdapterUiInfo {
+  manifest: AdapterUiManifest;
+}
+
+/**
+ * Capability subset available to adapter-level choice resolvers.
+ */
+export interface AdapterUiCapabilities {
+  sourceControl?: SourceControlCapability;
+  messaging?: MessagingCapability;
+  issueTracking?: IssueTrackingCapability;
+  appStore?: AppStoreCapability;
+  monitoring?: MonitoringCapability;
 }
 
 // ─── Adapter Metadata ─────────────────────────────────────────────────────────
@@ -189,19 +206,6 @@ export interface AdapterMetadata {
   /** Link to the provider's marketing / home page. */
   websiteUrl?: string;
 
-  /**
-   * Authentication method and credential input specification for this integration.
-   * When omitted the hub defaults to `{ type: 'oauth' }` at runtime,
-   * since all current adapters implement the OAuth handler interface.
-   */
-  auth?: AdapterAuthConfig;
-
-  /**
-   * Schema for runtime configuration fields shown after the integration is connected.
-   * Use this to let users configure the integration's behaviour (e.g. default repo, channel).
-   * Omit when no post-connection configuration is needed.
-   */
-  configSchema?: ConfigField[];
 }
 
 /**
@@ -235,6 +239,9 @@ export interface IntegrationAdapter<_TConfig = unknown> {
 
   /** Descriptive metadata: icon, description, dateAdded, category, etc. */
   readonly metadata?: AdapterMetadata;
+
+  /** General-purpose UI manifest and optional choice resolver. */
+  readonly ui?: AdapterUi;
 
   /** Declared capabilities this adapter supports. */
   readonly capabilities: readonly AdapterCapability[];

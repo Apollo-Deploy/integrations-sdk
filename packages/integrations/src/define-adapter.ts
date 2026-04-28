@@ -24,6 +24,10 @@ import type {
   AdapterCapability,
   AdapterContext,
   AdapterMetadata,
+  AdapterUiCapabilities,
+  AdapterUiInfo,
+  ChoicePage,
+  ChoiceResolverContext,
   IntegrationAdapter,
   TokenMetadata,
 } from "./types/adapter.js";
@@ -40,6 +44,8 @@ export interface AdapterDefinition<TConfig> {
   name: string;
   /** Descriptive metadata: icon, description, dateAdded, category, docsUrl, websiteUrl. */
   metadata?: AdapterMetadata;
+  /** General-purpose UI manifest exposed to host applications. */
+  ui?: AdapterUiInfo;
   capabilities: readonly AdapterCapability[];
   tokenMetadata: TokenMetadata;
 
@@ -52,6 +58,17 @@ export interface AdapterDefinition<TConfig> {
   createIssueTracking?(config: TConfig): IssueTrackingCapability;
   createAppStore?(config: TConfig): AppStoreCapability;
   createMonitoring?(config: TConfig): MonitoringCapability;
+
+  /**
+   * Resolve paged choices for a UI field.
+   * The host application supplies tokens and optional scope.
+   */
+  listChoices?(
+    config: TConfig,
+    capabilities: AdapterUiCapabilities,
+    sourceKey: string,
+    ctx: ChoiceResolverContext,
+  ): Promise<ChoicePage>;
 
   // Lifecycle hooks
   onRegister?(config: TConfig, context: AdapterContext): void | Promise<void>;
@@ -67,6 +84,7 @@ export interface AdapterDefinitionInfo {
   readonly id: string;
   readonly name: string;
   readonly metadata?: AdapterMetadata;
+  readonly ui?: AdapterUiInfo;
   readonly capabilities: readonly AdapterCapability[];
   readonly tokenMetadata: TokenMetadata;
 }
@@ -91,35 +109,68 @@ export function defineAdapter<TConfig>(
   definition: AdapterDefinition<TConfig>,
 ): AdapterFactory<TConfig> {
   const factory = (config: TConfig): IntegrationAdapter<TConfig> => {
+    const oauth = definition.createOAuthHandler(config);
+    const webhook = definition.createWebhookHandler(config);
+    const sourceControl = definition.capabilities.includes("source-control")
+      ? definition.createSourceControl?.(config)
+      : undefined;
+    const messaging = definition.capabilities.includes("messaging")
+      ? definition.createMessaging?.(config)
+      : undefined;
+    const issueTracking = definition.capabilities.includes("issue-tracking")
+      ? definition.createIssueTracking?.(config)
+      : undefined;
+    const appStore = definition.capabilities.includes("app-store")
+      ? definition.createAppStore?.(config)
+      : undefined;
+    const monitoring = definition.capabilities.includes("monitoring")
+      ? definition.createMonitoring?.(config)
+      : undefined;
+
     const adapter: IntegrationAdapter<TConfig> = {
       id: definition.id,
       name: definition.name,
       metadata: definition.metadata,
+      ui: definition.ui
+        ? {
+            manifest: definition.ui.manifest,
+            ...(definition.listChoices
+              ? {
+                  listChoices: (
+                    sourceKey: string,
+                    ctx: ChoiceResolverContext,
+                  ) =>
+                    definition.listChoices!(
+                      config,
+                      {
+                        sourceControl,
+                        messaging,
+                        issueTracking,
+                        appStore,
+                        monitoring,
+                      },
+                      sourceKey,
+                      ctx,
+                    ),
+                }
+              : {}),
+          }
+        : undefined,
       capabilities: definition.capabilities,
       tokenMetadata: definition.tokenMetadata,
 
-      oauth: definition.createOAuthHandler(config),
-      webhook: definition.createWebhookHandler(config),
+      oauth,
+      webhook,
 
-      sourceControl: definition.capabilities.includes("source-control")
-        ? definition.createSourceControl?.(config)
-        : undefined,
+      sourceControl,
 
-      messaging: definition.capabilities.includes("messaging")
-        ? definition.createMessaging?.(config)
-        : undefined,
+      messaging,
 
-      issueTracking: definition.capabilities.includes("issue-tracking")
-        ? definition.createIssueTracking?.(config)
-        : undefined,
+      issueTracking,
 
-      appStore: definition.capabilities.includes("app-store")
-        ? definition.createAppStore?.(config)
-        : undefined,
+      appStore,
 
-      monitoring: definition.capabilities.includes("monitoring")
-        ? definition.createMonitoring?.(config)
-        : undefined,
+      monitoring,
 
       supports(capability: AdapterCapability): boolean {
         return (this.capabilities as readonly string[]).includes(capability);
@@ -147,6 +198,11 @@ export function defineAdapter<TConfig>(
       id: definition.id,
       name: definition.name,
       metadata: definition.metadata,
+      ui: definition.ui
+        ? {
+            manifest: definition.ui.manifest,
+          }
+        : undefined,
       capabilities: definition.capabilities,
       tokenMetadata: definition.tokenMetadata,
     }),
